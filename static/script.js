@@ -190,6 +190,12 @@ class AuthManager {
     err.classList.add('hidden');
     err.textContent = '';
 
+    if (!username || !password) {
+      err.textContent = 'Vui lòng nhập username và password.';
+      err.classList.remove('hidden');
+      return;
+    }
+
     try {
       const res = await api(`/api/auth/login`, {
         method: 'POST',
@@ -220,16 +226,84 @@ class AuthManager {
     }
   }
 
-  async submitAuthForm() {
-    // Login only - no registration
+  async submitRegister() {
+    const username = document.getElementById('auth-reg-username').value.trim();
+    const password = document.getElementById('auth-reg-password').value;
+    const passwordConfirm = document.getElementById('auth-reg-password-confirm').value;
+    const err = document.getElementById('auth-reg-error');
+    err.classList.add('hidden');
+    err.textContent = '';
+
+    if (!username || !password || !passwordConfirm) {
+      err.textContent = 'Vui lòng điền tất cả các trường.';
+      err.classList.remove('hidden');
+      return;
+    }
+
+    if (username.length < 3 || username.length > 32) {
+      err.textContent = 'Username phải có 3-32 ký tự.';
+      err.classList.remove('hidden');
+      return;
+    }
+
+    if (password.length < 6) {
+      err.textContent = 'Mật khẩu phải có tối thiểu 6 ký tự.';
+      err.classList.remove('hidden');
+      return;
+    }
+
+    if (password !== passwordConfirm) {
+      err.textContent = 'Mật khẩu xác nhận không trùng khớp.';
+      err.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      const res = await api(`/api/auth/register`, {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      });
+      this.saveSession(res.token, res.user);
+      alert('✅ Đăng ký thành công!');
+      closeAuth();
+      if (window.requestedView) {
+        const viewName = window.requestedView;
+        window.requestedView = null;
+        showView(viewName);
+        if (viewName === 'saved') openSavedWords();
+      } else {
+        showView('home');
+        renderHome();
+      }
+    } catch (error) {
+      err.textContent = error.message;
+      err.classList.remove('hidden');
+    }
   }
 
-  switchAuthMode() {
-    // Auth mode switching removed - login only
-  }
+  switchAuthMode(mode) {
+    this.authMode = mode;
+    const loginForm = document.getElementById('auth-login-form');
+    const registerForm = document.getElementById('auth-register-form');
+    
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.mode === mode);
+      if (tab.dataset.mode === mode) {
+        tab.style.color = 'var(--primary)';
+        tab.style.borderBottomColor = 'var(--primary)';
+      } else {
+        tab.style.color = '#999';
+        tab.style.borderBottomColor = 'transparent';
+      }
+    });
 
-  switchAuthModeForm() {
-    // Form auth removed - login only
+    if (mode === 'login') {
+      loginForm.classList.remove('hidden');
+      registerForm.classList.add('hidden');
+    } else {
+      loginForm.classList.add('hidden');
+      registerForm.classList.remove('hidden');
+    }
   }
 
   async logout() {
@@ -1243,9 +1317,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-update-learn')?.addEventListener('click', handleUpdateHSK);
 
   document.getElementById('auth-submit')?.addEventListener('click', () => authManager.submitAuth());
+  document.getElementById('auth-register')?.addEventListener('click', () => authManager.submitRegister());
   document.getElementById('auth-logout')?.addEventListener('click', () => authManager.logout());
   document.getElementById('auth-password')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') authManager.submitAuth();
+  });
+  document.getElementById('auth-reg-password-confirm')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') authManager.submitRegister();
   });
 
   document.getElementById('toggle-password')?.addEventListener('click', function() {
@@ -1254,6 +1332,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const isPass = passInput.type === 'password';
     passInput.type = isPass ? 'text' : 'password';
     this.textContent = isPass ? '🙈' : '👁️';
+  });
+
+  document.getElementById('toggle-password-reg')?.addEventListener('click', function() {
+    const passInput = document.getElementById('auth-reg-password');
+    if (!passInput) return;
+    const isPass = passInput.type === 'password';
+    passInput.type = isPass ? 'text' : 'password';
+    this.textContent = isPass ? '🙈' : '👁️';
+  });
+
+  document.getElementById('toggle-password-confirm')?.addEventListener('click', function() {
+    const passInput = document.getElementById('auth-reg-password-confirm');
+    if (!passInput) return;
+    const isPass = passInput.type === 'password';
+    passInput.type = isPass ? 'text' : 'password';
+    this.textContent = isPass ? '🙈' : '👁️';
+  });
+
+  // Auth mode switching
+  document.querySelectorAll('.auth-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      authManager.switchAuthMode(tab.dataset.mode);
+    });
   });
 
   // search

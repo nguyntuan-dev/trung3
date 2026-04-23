@@ -374,21 +374,59 @@
         <div class="auth-panel">
           <div class="auth-card">
             <h3 id="auth-title">Đăng nhập</h3>
-            <label>Username
-              <input type="text" id="auth-username" class="auth-input" autocomplete="username"
-                placeholder="Enter username" required>
-            </label>
-            <label>Password
-              <div style="position: relative; display: flex; align-items: center;">
-                <input type="password" id="auth-password" class="auth-input" autocomplete="current-password"
-                  placeholder="Enter password" required style="padding-right: 40px; width: 100%;">
-                <span id="toggle-password" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
-                  title="Hiện/Ẩn mật khẩu">👁️</span>
-              </div>
-            </label>
-            <p class="auth-error hidden" id="auth-error"></p>
-            <button class="btn-main" id="auth-submit">Đăng nhập</button>
-            <button class="btn-ghost-sm hidden" id="auth-logout">Đăng xuất</button>
+            
+            <!-- Mode Tabs -->
+            <div class="auth-tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
+              <button class="auth-tab active" data-mode="login"
+                style="padding: 8px 16px; border: none; background: none; cursor: pointer; border-bottom: 3px solid var(--primary); color: var(--primary);">Đăng nhập</button>
+              <button class="auth-tab" data-mode="register"
+                style="padding: 8px 16px; border: none; background: none; cursor: pointer; color: #999;">Đăng ký</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="auth-login-form">
+              <label>Username
+                <input type="text" id="auth-username" class="auth-input" autocomplete="username"
+                  placeholder="Nhập username" required>
+              </label>
+              <label>Password
+                <div style="position: relative; display: flex; align-items: center;">
+                  <input type="password" id="auth-password" class="auth-input" autocomplete="current-password"
+                    placeholder="Nhập mật khẩu" required style="padding-right: 40px; width: 100%;">
+                  <span id="toggle-password" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
+                    title="Hiện/Ẩn mật khẩu">👁️</span>
+                </div>
+              </label>
+              <p class="auth-error hidden" id="auth-error"></p>
+              <button class="btn-main" id="auth-submit" style="width: 100%;">Đăng nhập</button>
+              <button class="btn-ghost-sm hidden" id="auth-logout">Đăng xuất</button>
+            </div>
+
+            <!-- Register Form -->
+            <div id="auth-register-form" class="hidden">
+              <label>Username (3-32 ký tự)
+                <input type="text" id="auth-reg-username" class="auth-input" autocomplete="username"
+                  placeholder="Nhập username" required minlength="3" maxlength="32">
+              </label>
+              <label>Password (tối thiểu 6 ký tự)
+                <div style="position: relative; display: flex; align-items: center;">
+                  <input type="password" id="auth-reg-password" class="auth-input" autocomplete="new-password"
+                    placeholder="Nhập mật khẩu" required minlength="6" style="padding-right: 40px; width: 100%;">
+                  <span id="toggle-password-reg" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
+                    title="Hiện/Ẩn mật khẩu">👁️</span>
+                </div>
+              </label>
+              <label>Xác nhận mật khẩu
+                <div style="position: relative; display: flex; align-items: center;">
+                  <input type="password" id="auth-reg-password-confirm" class="auth-input" autocomplete="new-password"
+                    placeholder="Nhập lại mật khẩu" required minlength="6" style="padding-right: 40px; width: 100%;">
+                  <span id="toggle-password-confirm" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
+                    title="Hiện/Ẩn mật khẩu">👁️</span>
+                </div>
+              </label>
+              <p class="auth-error hidden" id="auth-reg-error"></p>
+              <button class="btn-main" id="auth-register" style="width: 100%;">Đăng ký</button>
+            </div>
           </div>
         </div>
       </div>

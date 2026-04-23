@@ -35,10 +35,10 @@ backend/local.db
 .DS_Store
 node_modules/
 scratch/
-backend/data/*.txt
-backend/data/*.txt.gz
-backend/data/viet_cache.json
-backend/data/*.sqlite3
+data/*.txt
+data/*.txt.gz
+data/viet_cache.json
+data/*.sqlite3
 
 # IDEs
 .vscode/
