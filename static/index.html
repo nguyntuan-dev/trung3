@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>汉语Go – Học Tiếng Trung</title>
+  <meta name="description" content="Tra cứu từ vựng tiếng Trung từ từ điển CC-CEDICT, học theo chuẩn HSK 1-6.">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="icon" href="/static/ChatGPT Image 22_18_16 20 thg 4, 2026.png" />
+</head>
+
+<body>
+
+  <header id="header">
+    <div class="container header-inner">
+      <a href="#" class="logo" id="logo-home">
+        <img src="/static/ChatGPT Image 22_18_16 20 thg 4, 2026.png" alt="Logo" class="logo-img">
+        汉语<span>Go</span>
+      </a>
+      <nav id="nav">
+        <a href="#" class="tab" id="auth-tab" data-view="auth">Đăng nhập</a>
+        <a href="#" class="tab active" data-view="home">Trang chủ</a>
+        <a href="#" class="tab" data-view="type">Luyện gõ</a>
+        <a href="#" class="tab" data-view="learn">Học HSK</a>
+        <a href="#" class="tab" data-view="search">Tra từ điển</a>
+        <a href="#" class="tab" data-view="flashcard">Flashcard</a>
+        <a href="#" class="tab" data-view="quiz">Kiểm tra</a>
+        <a href="#" class="tab" data-view="pronounce">Luyện nói</a>
+        <a href="#" class="tab" data-view="saved">Từ đã lưu</a>
+        <a href="#" class="tab hidden" id="admin-tab" data-view="admin">Admin</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- HOME -->
+    <div id="view-home" class="view">
+      <section class="hero-simple">
+        <h1>Học tiếng Trung<br>cùng Go</h1>
+        <p>Tra cứu hơn 120.000 từ, học theo lộ trình HSK 1–6, luyện flashcard và kiểm tra.</p>
+        <button class="btn-main" id="btn-go">Bắt đầu học →</button>
+      </section>
+
+      <section class="hsk-grid" id="hsk-grid">
+        <!-- rendered by JS -->
+      </section>
+    </div>
+
+    <!-- LEARN -->
+    <div id="view-learn" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="learn-back">← Quay lại</button>
+        <h2 id="learn-title">HSK 1</h2>
+        <span class="muted" id="learn-info"></span>
+        <button class="btn-icon" id="btn-update-learn" title="Cập nhật từ vựng"
+          style="margin-left: auto; font-size: 1.2rem;">🔄</button>
+      </div>
+
+      <div class="learn-toolbar">
+        <div class="pill" id="learn-progress">0 / 0</div>
+      </div>
+
+      <div class="word-list" id="word-list"></div>
+      <div class="pagination" id="learn-pagination"></div>
+    </div>
+
+    <!-- SEARCH -->
+    <div id="view-search" class="view hidden">
+      <div class="search-area">
+        <input type="search" id="search-input" class="search-input"
+          placeholder="Nhập chữ Hán, pinyin, tiếng Anh hoặc tiếng Việt...">
+      </div>
+      <div class="word-list" id="search-results">
+        <p class="muted center">Nhập từ khóa để tìm kiếm trong từ điển.</p>
+      </div>
+    </div>
+
+    <!-- FLASHCARD -->
+    <div id="view-flashcard" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="fc-back">← Quay lại</button>
+        <h2>Flashcard</h2>
+        <select id="fc-level" class="sel">
+          <option value="1">HSK 1</option>
+          <option value="2">HSK 2</option>
+          <option value="3">HSK 3</option>
+          <option value="4">HSK 4</option>
+          <option value="5">HSK 5</option>
+          <option value="6">HSK 6</option>
+        </select>
+      </div>
+
+      <div class="fc-stage">
+        <div class="fc-count"><span id="fc-idx">1</span> / <span id="fc-total">0</span></div>
+        <div class="card" id="card" tabindex="0">
+          <div class="card-front">
+            <div class="card-char" id="card-char">–</div>
+            <div id="fc-front-audio" class="fc-audio-pos"></div>
+            <div class="card-hint">nhấn để lật</div>
+          </div>
+          <div class="card-back">
+            <div class="card-back-char" id="cb-char"></div>
+            <div id="fc-back-audio" class="fc-audio-pos"></div>
+            <div class="card-back-pinyin" id="cb-pinyin"></div>
+            <div class="card-back-vi" id="cb-vi"></div>
+            <div class="card-back-en" id="cb-en"></div>
+          </div>
+        </div>
+        <div class="fc-btns">
+          <button class="btn-icon" id="fc-prev" title="Trước">‹</button>
+          <button class="btn-s btn-red" id="fc-hard">Khó</button>
+          <button class="btn-s btn-green" id="fc-easy">Dễ ✓</button>
+          <button class="btn-icon" id="fc-next" title="Tiếp">›</button>
+        </div>
+        <button class="btn-ghost-sm" id="fc-shuffle">🔀 Trộn bài</button>
+      </div>
+    </div>
+
+    <!-- QUIZ -->
+    <div id="view-quiz" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="quiz-back">← Quay lại</button>
+        <h2>Kiểm tra</h2>
+      </div>
+
+      <!-- setup -->
+      <div id="quiz-setup" class="quiz-setup">
+        <label>Cấp độ
+          <select id="quiz-level" class="sel">
+            <option value="1">HSK 1</option>
+            <option value="2">HSK 2</option>
+            <option value="3">HSK 3</option>
+            <option value="4">HSK 4</option>
+            <option value="5">HSK 5</option>
+            <option value="6">HSK 6</option>
+          </select>
+        </label>
+        <label>Số câu
+          <select id="quiz-count" class="sel">
+            <option value="10">10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </select>
+        </label>
+        <button class="btn-main" id="quiz-start">Bắt đầu →</button>
+      </div>
+
+      <!-- play -->
+      <div id="quiz-play" class="hidden">
+        <div class="quiz-bar">
+          <div class="qbar-track">
+            <div class="qbar-fill" id="qbar-fill"></div>
+          </div>
+          <span id="q-progress">1/10</span>
+          <span class="q-score-g" id="q-right">✓ 0</span>
+          <span class="q-score-r" id="q-wrong">✗ 0</span>
+          <span class="q-timer" id="q-timer">15s</span>
+        </div>
+        <div class="q-card">
+          <div class="q-label" id="q-label">Nghĩa của từ:</div>
+          <div class="q-word" id="q-word"></div>
+          <div class="q-sub" id="q-sub"></div>
+        </div>
+        <div class="q-opts" id="q-opts"></div>
+        <div class="q-fb hidden" id="q-fb">
+          <p id="q-fb-text"></p>
+          <button class="btn-main" id="q-next">Tiếp theo →</button>
+        </div>
+        <button class="btn-ghost" id="quiz-end" style="margin-top: 20px;">⏹ Kết thúc bài</button>
+      </div>
+
+      <!-- result -->
+      <div id="quiz-result" class="hidden quiz-result">
+        <h3 id="qr-title">Kết quả</h3>
+        <div class="qr-score" id="qr-score">0%</div>
+        <p class="muted" id="qr-detail"></p>
+        <button class="btn-main" id="qr-again">Làm lại</button>
+      </div>
+    </div>
+
+    <!-- TYPING -->
+    <div id="view-type" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="type-back">← Quay lại</button>
+        <h2>Luyện gõ tiếng Trung</h2>
+      </div>
+
+      <!-- mode tabs -->
+      <div class="type-tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
+        <button class="type-tab active" data-mode="word"
+          style="padding: 12px 20px; border: none; background: none; cursor: pointer; font-size: 1rem; border-bottom: 3px solid var(--primary); color: var(--primary);">📝
+          Gõ từ</button>
+        <button class="type-tab" data-mode="sentence"
+          style="padding: 12px 20px; border: none; background: none; cursor: pointer; font-size: 1rem; color: #999;">📖
+          Gõ câu</button>
+      </div>
+
+      <!-- setup -->
+      <div id="type-setup" class="quiz-setup">
+        <label>Cấp độ
+          <select id="type-level" class="sel">
+            <option value="1">HSK 1</option>
+            <option value="2">HSK 2</option>
+            <option value="3">HSK 3</option>
+            <option value="4">HSK 4</option>
+            <option value="5">HSK 5</option>
+            <option value="6">HSK 6</option>
+          </select>
+        </label>
+        <label id="type-count-label">Số từ luyện gõ
+          <select id="type-count" class="sel">
+            <option value="10">10 từ</option>
+            <option value="20">20 từ</option>
+            <option value="50">50 từ</option>
+          </select>
+        </label>
+        <button class="btn-main" id="type-start">Bắt đầu gõ →</button>
+      </div>
+
+      <!-- play - word mode -->
+      <div id="type-play" class="hidden">
+        <div class="quiz-bar">
+          <span id="type-progress">1/10</span>
+          <span class="q-score-g" id="type-right">✓ 0</span>
+        </div>
+        <div class="type-stage"
+          style="text-align:center; padding: 40px 20px; background:var(--bg-card); border-radius:12px; margin-top:20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+          <div class="q-word" id="type-word" style="font-size: 4rem; color: var(--zh-color); margin-bottom: 10px;">
+          </div>
+          <div class="q-sub" id="type-pinyin"
+            style="font-size: 1.5rem; color: var(--muted); margin-bottom: 5px; visibility: hidden;">
+          </div>
+          <div class="q-sub" id="type-vi" style="font-size: 1.2rem; margin-bottom: 30px; visibility: hidden;"></div>
+
+          <div style="margin-bottom: 20px;">
+            <button id="btn-type-hint" class="btn-ghost-sm">💡 Hiện gợi ý</button>
+            <button id="btn-type-end" class="btn-ghost-sm" style="margin-left: 10px;">⏹ Kết thúc</button>
+          </div>
+
+          <input type="text" id="type-input" placeholder="Gõ chữ Hán hoặc Pinyin..."
+            style="font-size: 2rem; padding: 10px; width: 80%; max-width: 400px; text-align: center; border: 2px solid #ccc; border-radius: 8px;">
+        </div>
+      </div>
+
+      <!-- play - sentence mode -->
+      <div id="sentence-play" class="hidden">
+        <div class="quiz-bar">
+          <span id="sentence-progress">1/10</span>
+          <span class="q-score-g" id="sentence-right">✓ 0</span>
+        </div>
+        <div class="type-stage"
+          style="text-align:center; padding: 40px 20px; background:var(--bg-card); border-radius:12px; margin-top:20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+          <div style="margin-bottom: 20px; text-align: left; background: #f0f4f8; padding: 15px; border-radius: 8px;">
+            <div style="font-size: 0.9rem; color: #666; margin-bottom: 8px;">📝 Gõ câu này:</div>
+            <div class="q-word" id="sentence-zh"
+              style="font-size: 2rem; color: var(--zh-color); line-height: 1.8; word-break: break-word;">
+            </div>
+          </div>
+
+          <div id="sentence-hint-area" style="margin-bottom: 20px;">
+            <div style="font-size: 0.9rem; color: #666; margin-bottom: 8px;">📖 Dịch sang tiếng Việt:</div>
+            <div id="sentence-vi"
+              style="font-size: 1.1rem; color: #333; background: #fff9e6; padding: 12px; border-radius: 8px; visibility: hidden;">
+            </div>
+            <button id="btn-sentence-hint" class="btn-ghost-sm" style="margin-top: 10px;">💡 Hiện dịch</button>
+            <button id="btn-sentence-pinyin-hint" class="btn-ghost-sm" style="margin-top: 10px; margin-left: 10px;">📝
+              Hiện Pinyin</button>
+          </div>
+
+          <div id="sentence-pinyin-hint" style="margin-bottom: 20px; visibility: hidden;">
+            <div style="font-size: 0.9rem; color: #666; margin-bottom: 8px;">📝 Pinyin của câu:</div>
+            <div id="sentence-pinyin"
+              style="font-size: 1.1rem; color: #333; background: #e6f7ff; padding: 12px; border-radius: 8px;">
+            </div>
+          </div>
+
+          <div style="margin-bottom: 20px; text-align: center;">
+            <label style="font-size: 0.95rem; color: #666;">Gõ bằng Pinyin (cách nhau bằng khoảng trắng):</label>
+            <input type="text" id="sentence-input" placeholder="Ví dụ: wo3 shi4 yi2 ge4 xue2 sheng1"
+              style="font-size: 1.5rem; padding: 12px; width: 90%; max-width: 600px; text-align: center; border: 2px solid #ccc; border-radius: 8px; margin-top: 10px;">
+
+            <!-- Real-time conversion display -->
+            <div id="sentence-conversion"
+              style="margin-top: 15px; padding: 12px; background: #f0f9ff; border-radius: 8px; display: none; border-left: 4px solid #0284c7;">
+              <div style="font-size: 0.9rem; color: #666; margin-bottom: 8px;">📝 Tự động chuyển đổi:</div>
+              <div id="sentence-conversion-result" style="font-size: 2rem; color: var(--zh-color); font-weight: bold;">
+              </div>
+            </div>
+          </div>
+
+          <div id="sentence-feedback" style="margin-top: 15px; display: none;">
+            <p id="sentence-fb-text" style="font-size: 1rem; margin: 10px 0;"></p>
+            <button id="btn-sentence-next" class="btn-main" style="margin-top: 10px;">Tiếp theo →</button>
+          </div>
+          <button id="btn-sentence-end" class="btn-ghost-sm" style="margin-top: 15px;">⏹ Kết thúc</button>
+        </div>
+      </div>
+
+      <!-- result -->
+      <div id="type-result" class="hidden quiz-result">
+        <h3>Hoàn thành bài gõ!</h3>
+        <p class="muted" id="type-detail"></p>
+        <button class="btn-main" id="type-again">Tập gõ lại</button>
+        <button class="btn-ghost" id="type-back-to-setup" style="margin-left: 10px;">Chọn lại chế độ</button>
+      </div>
+
+      <!-- result - sentence -->
+      <div id="sentence-result" class="hidden quiz-result">
+        <h3>Hoàn thành bài gõ câu!</h3>
+        <p class="muted" id="sentence-detail"></p>
+        <button class="btn-main" id="sentence-again">Tập gõ lại</button>
+      </div>
+    </div>
+
+    <!-- PRONOUNCE -->
+    <div id="view-pronounce" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="pronounce-back">← Quay lại</button>
+        <h2>Luyện nói</h2>
+        <select id="pronounce-level" class="sel" style="margin-left:auto;">
+          <option value="1">HSK 1</option>
+          <option value="2">HSK 2</option>
+          <option value="3">HSK 3</option>
+          <option value="4">HSK 4</option>
+          <option value="5">HSK 5</option>
+          <option value="6">HSK 6</option>
+        </select>
+      </div>
+      <div class="quiz-setup" style="margin-bottom:18px;">
+        <div class="muted" style="max-width:800px; line-height:1.6;">
+          Chọn một câu dài để luyện phát âm. Bấm <strong>Phát mẫu</strong> để nghe trước, sau đó bấm <strong>Bắt đầu ghi âm</strong> để đọc to câu tiếng Trung.
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+          <button id="pronounce-sample" class="btn-ghost-sm">🔊 Phát mẫu</button>
+          <button id="pronounce-start-record" class="btn-main">🎙️ Bắt đầu ghi âm</button>
+          <button id="pronounce-stop-record" class="btn-ghost-sm">⏹ Dừng</button>
+          <button id="pronounce-retry-record" class="btn-ghost-sm">↻ Thử lại</button>
+        </div>
+      </div>
+      <div id="pronounce-list" class="word-list"></div>
+      <div id="pronounce-panel" class="hidden" style="margin-top:18px; padding:18px; border-radius:18px; background:linear-gradient(180deg,#ffffff,#f8fbff); border:1px solid #e5eef7; box-shadow:0 14px 30px rgba(15,23,42,.08); position:relative; z-index:1;">
+        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:14px;">
+          <div>
+            <div id="pronounce-status" style="font-weight:600; color:#0f172a; margin-bottom:4px;">Sẵn sàng chấm điểm.</div>
+            <div class="muted">Chấm tổng, kiểm tra từng từ và phát hiện tone sai.</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="muted" style="font-size:.9rem;">Điểm tổng</div>
+            <div id="pronounce-score" style="font-size:3rem; font-weight:800; color:var(--primary); line-height:1;">0</div>
+          </div>
+        </div>
+        <div id="pronounce-detail" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:16px;"></div>
+        <div id="pronounce-word-list" style="display:grid; gap:10px;"></div>
+      </div>
+    </div>
+
+    <!-- SAVED WORDS -->
+    <div id="view-saved" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="saved-back">← Quay lại</button>
+        <h2>Từ đã lưu</h2>
+      </div>
+      <div class="word-list" id="saved-words-list">
+        <p class="muted center">Không có từ đã lưu nào.</p>
+      </div>
+    </div>
+
+    <!-- AUTH -->
+    <div class="modal-bg hidden" id="view-auth">
+      <div class="modal-content">
+        <button class="modal-x" id="auth-back">×</button>
+        <div class="auth-panel">
+          <div class="auth-card">
+            <h3 id="auth-title">Đăng nhập</h3>
+            <label>Username
+              <input type="text" id="auth-username" class="auth-input" autocomplete="username"
+                placeholder="Enter username" required>
+            </label>
+            <label>Password
+              <div style="position: relative; display: flex; align-items: center;">
+                <input type="password" id="auth-password" class="auth-input" autocomplete="current-password"
+                  placeholder="Enter password" required style="padding-right: 40px; width: 100%;">
+                <span id="toggle-password" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
+                  title="Hiện/Ẩn mật khẩu">👁️</span>
+              </div>
+            </label>
+            <p class="auth-error hidden" id="auth-error"></p>
+            <button class="btn-main" id="auth-submit">Đăng nhập</button>
+            <button class="btn-ghost-sm hidden" id="auth-logout">Đăng xuất</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN -->
+    <div id="view-admin" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="admin-back">Back</button>
+        <h2>Admin</h2>
+      </div>
+      <div class="admin-grid">
+        <section>
+          <h3>Tài khoản người dùng</h3>
+          <p class="admin-note">Vì lý do bảo mật, mật khẩu không được hiển thị. Admin chỉ xem được tên tài khoản, trạng thái và nhật ký truy cập.</p>
+          <div class="admin-list" id="admin-users"></div>
+        </section>
+        <section>
+          <h3>Thiết bị truy cập (API Logs)</h3>
+          <div class="admin-list" id="admin-logs"></div>
+        </section>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <p>Từ điển: <a href="https://cc-cedict.org" target="_blank">CC-CEDICT</a> (CC BY-SA 3.0) · 汉语Go</p>
+  </footer>
+
+  <!-- MODAL -->
+  <div class="modal-bg hidden" id="modal">
+    <div class="modal-content">
+      <button class="modal-x" id="modal-x">×</button>
+      <div class="m-char" id="m-char"></div>
+      <div id="m-audio-ctrl" class="m-audio-ctrl"></div>
+      <div id="m-writer" style="width: 100%; min-height: 100px; margin: 0 auto; display: none;"></div>
+      <div class="writer-controls" style="text-align: center; margin-top: 10px; display: none;" id="m-writer-ctrl">
+        <button id="btn-draw" class="btn-ghost-sm">▶ Dạy viết</button>
+        <button id="btn-practice" class="btn-ghost-sm">✍️ Tự viết</button>
+      </div>
+      <br>
+      <div class="m-trad" id="m-trad"></div>
+      <div class="m-pinyin" id="m-pinyin"></div>
+      <div class="m-vi" id="m-vi"></div>
+      <div class="m-en" id="m-en"></div>
+      <div class="m-hsk" id="m-hsk"></div>
+      <div style="margin-top: 15px; text-align: center;">
+        <button id="btn-save-word" class="btn-main">💾 Lưu từ vựng</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="loading-overlay hidden" id="loading-overlay">
+    <div class="loading-spinner"></div>
+    <p id="loading-text">Đang cập nhật dữ liệu...</p>
+  </div>
+
+  <script src="/static/hanzi-writer.min.js"></script>
+  <script src="/static/script.js"></script>
+</body>
+
+</html>
