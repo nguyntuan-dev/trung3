@@ -14,13 +14,13 @@ load_dotenv()
 
 ACCESS_LOGS = []
 
-from fastapi import FastAPI, Query, Request, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, Query, Request, HTTPException, Depends, BackgroundTasks, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 import urllib.request
 import urllib.parse
-from viet_dict import VI as VIET_DICT_DATA
 from sqlalchemy.orm import Session
 from sqlalchemy import func, inspect, text
 from pydantic import BaseModel, Field
@@ -87,7 +87,6 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
         print("SUCCESS: Database tables ready")
-        cedict.load_vietnamese_dict(VIET_DICT_DATA) # Load and prioritize the manually curated Vietnamese dictionary
     except Exception as e:
         print(f"ERROR: Table creation failed: {e}")
     cedict.load()
@@ -103,7 +102,39 @@ app = FastAPI(
 # Initialize Limiter
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "Quá nhiều yêu cầu. Vui lòng thử lại sau."},
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Chuyển đổi lỗi validation từ list/object phức tạp thành chuỗi đơn giản
+    # Giúp bảo mật cấu trúc schema và tránh hiển thị [object Object] ở frontend
+    error_details = exc.errors()
+    msg = "Dữ liệu không hợp lệ"
+    if error_details:
+        err = error_details[0]
+        field = ".".join(str(l) for l in err.get("loc", []) if l != "body")
+        msg = f"Lỗi: {err.get('msg')}" + (f" (trường {field})" if field else "")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": msg},
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": str(exc.detail)})
+    # Log lỗi thực tế ở server (không trả về client để bảo mật)
+    print(f"CRITICAL ERROR: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."},
+    )
 
 # CORS Configuration from .env
 origins = os.getenv("CORS_ORIGINS", "*").split(",")
@@ -326,6 +357,47 @@ def delete_saved_word(
         db.commit()
         return {"status": "success"}
     return {"status": "error", "msg": "Not found"}
+
+
+@app.get("/api/flashcard/saved")
+def get_saved_words_flashcard(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Lấy danh sách từ đã lưu cho flashcard"""
+    words = db.query(models.SavedWord)\
+        .filter(models.SavedWord.user_id == user.id)\
+        .order_by(models.SavedWord.id.desc())\
+        .all()
+    
+    if not words:
+        return {"words": [], "count": 0}
+    
+    result = []
+    for w in words:
+        entry = cedict.lookup(w.word)
+        if entry:
+            result.append({
+                "id": w.id,
+                "simplified": entry.get("simplified", w.word),
+                "traditional": entry.get("traditional", w.word),
+                "pinyin": entry.get("pinyin", w.pinyin),
+                "english": entry.get("english", []),
+                "vietnamese": entry.get("vietnamese", w.meaning),
+                "hsk": entry.get("hsk", w.hsk_level),
+            })
+        else:
+            result.append({
+                "id": w.id,
+                "simplified": w.word,
+                "traditional": w.word,
+                "pinyin": w.pinyin,
+                "english": [],
+                "vietnamese": w.meaning,
+                "hsk": w.hsk_level,
+            })
+
+    return {"words": result, "count": len(result)}
 
 
 @app.get("/api/hsk")

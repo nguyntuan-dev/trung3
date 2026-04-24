@@ -172,13 +172,13 @@ class AuthManager {
     const authTab = document.getElementById('auth-tab');
     const adminTab = document.getElementById('admin-tab');
     const nav = document.getElementById('nav');
-    const isAdminRoute = window.location.pathname === '/admin1811';
+    const isAdminRoute = window.location.pathname.startsWith('/admin1811');
     if (authTab) {
       authTab.textContent = this.user ? this.user.username : 'Đăng nhập';
       authTab.classList.toggle('hidden', this.user && !isAdminRoute);
     }
     if (nav) nav.classList.toggle('hidden', !this.user);
-    if (adminTab) adminTab.classList.add('hidden');
+    if (adminTab) adminTab.classList.toggle('hidden', !this.user?.is_admin);
     if (authTab) authTab.classList.toggle('hidden', isAdminRoute);
     document.getElementById('auth-logout')?.classList.toggle('hidden', !this.user);
   }
@@ -404,12 +404,11 @@ async function api(path, options = {}) {
       authManager?.saveSession('', null);
       showView('auth');
     }
-    let errorMessage = r.statusText;
+    let errorData = r.statusText;
     try {
-      const errorData = await r.json();
-      errorMessage = errorData.detail || errorMessage;
+      errorData = await r.json();
     } catch {}
-    throw new Error(errorMessage);
+    throw new Error(getSafeErrorMessage(errorData));
   }
   return r.json();
 }
@@ -476,12 +475,17 @@ async function handleUpdateHSK() {
 
 async function loadAdmin() {
   if (!authManager.user?.is_admin) return;
+  const userList = document.getElementById('admin-users');
+  const logList = document.getElementById('admin-logs');
+  if (!userList || !logList) return;
+
+  userList.innerHTML = '<p class="muted center">Đang tải...</p>';
   try {
     const [users, logs] = await Promise.all([
       api('/api/admin/users'),
       api('/api/admin/logs'),
     ]);
-    document.getElementById('admin-users').innerHTML = users.map(u => `
+    userList.innerHTML = users.map(u => `
       <div class="admin-row admin-user-row">
         <div class="admin-user-meta">
           <strong>${u.username}</strong>
@@ -496,7 +500,7 @@ async function loadAdmin() {
       </div>
     `).join('') || '<p class="muted">Chưa có người dùng.</p>';
 
-    document.getElementById('admin-logs').innerHTML = logs.map(l => `
+    logList.innerHTML = logs.map(l => `
       <div class="admin-row admin-log-row">
         <div>
           <strong>${l.ip}</strong>
@@ -512,8 +516,8 @@ async function loadAdmin() {
         loadAdmin();
       });
     });
-  } catch {
-    document.getElementById('admin-users').innerHTML = '<p class="muted">Khong tai duoc du lieu admin.</p>';
+  } catch (e) {
+    userList.innerHTML = `<p class="muted">Lỗi tải dữ liệu: ${e.message}</p>`;
   }
 }
 
@@ -735,17 +739,37 @@ function closeAuth() {
 
 // ── FLASHCARD ──
 async function initFC(level) {
+  const mode = document.getElementById('fc-mode')?.value || 'hsk';
   try {
-    const data = await api(`/api/random?level=${level}&count=30`);
-    S.fcDeck = data;
+    if (mode === 'saved') {
+      const data = await api('/api/flashcard/saved');
+      S.fcDeck = data.words || [];
+    } else {
+      const data = await api(`/api/random?level=${level}&count=30`);
+      S.fcDeck = data;
+    }
     S.fcIdx = 0;
     updateFC();
-  } catch { S.fcDeck = []; }
+  } catch {
+    S.fcDeck = [];
+    updateFC();
+  }
 }
 
 function updateFC() {
   const d = S.fcDeck;
-  if (!d.length) return;
+  if (!d.length) {
+    document.getElementById('card-char').textContent = '–';
+    document.getElementById('cb-char').textContent = '';
+    document.getElementById('cb-pinyin').textContent = '';
+    document.getElementById('cb-vi').textContent = '';
+    document.getElementById('cb-en').textContent = '';
+    document.getElementById('fc-front-audio').innerHTML = '';
+    document.getElementById('fc-back-audio').innerHTML = '';
+    document.getElementById('fc-idx').textContent = '0';
+    document.getElementById('fc-total').textContent = '0';
+    return;
+  }
   const w = d[S.fcIdx];
   document.getElementById('card-char').textContent = w.simplified;
   document.getElementById('cb-char').textContent = w.simplified;
@@ -1427,6 +1451,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.getElementById('fc-hard')?.addEventListener('click', () => nextFC(1));
   document.getElementById('fc-level')?.addEventListener('change', e => initFC(+e.target.value));
+  document.getElementById('fc-mode')?.addEventListener('change', () => initFC(+document.getElementById('fc-level').value));
 
   // keyboard
   document.addEventListener('keydown', e => {
