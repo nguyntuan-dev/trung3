@@ -154,8 +154,24 @@ function stopPronunciationSession(msg) {
 class AuthManager {
   constructor() {
     this.token = localStorage.getItem('hg_token') || '';
-    this.user = JSON.parse(localStorage.getItem('hg_user') || 'null');
+    this.user = null;
+    try {
+      this.user = JSON.parse(localStorage.getItem('hg_user') || 'null');
+    } catch (e) {
+      console.warn('Failed to parse user from localStorage:', e);
+      this.user = null;
+      localStorage.removeItem('hg_user');
+    }
     this.authMode = 'login';
+  }
+
+  // Safe error message helper
+  getSafeErrorMessage(errorData) {
+    if (typeof errorData === 'string') return errorData;
+    if (errorData?.message) return errorData.message;
+    if (errorData?.detail) return errorData.detail;
+    if (errorData?.error) return errorData.error;
+    return 'Đã xảy ra lỗi không xác định.';
   }
 
   saveSession(token, user) {
@@ -221,7 +237,8 @@ class AuthManager {
         }
       }
     } catch (error) {
-      err.textContent = error.message;
+      console.error('Login error:', error);
+      err.textContent = this.getSafeErrorMessage(error);
       err.classList.remove('hidden');
     }
   }
@@ -276,7 +293,8 @@ class AuthManager {
         renderHome();
       }
     } catch (error) {
-      err.textContent = error.message;
+      console.error('Register error:', error);
+      err.textContent = this.getSafeErrorMessage(error);
       err.classList.remove('hidden');
     }
   }
@@ -401,16 +419,29 @@ async function api(path, options = {}) {
   const r = await fetch(API + path, { ...options, headers });
   if (!r.ok) {
     if (r.status === 401) {
-      authManager?.saveSession('', null);
+      // Clear session on auth errors
+      if (authManager) {
+        authManager.saveSession('', null);
+      }
       showView('auth');
+      throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
     }
     let errorData = r.statusText;
     try {
-      errorData = await r.json();
+      const jsonData = await r.json();
+      errorData = jsonData;
     } catch {}
-    throw new Error(getSafeErrorMessage(errorData));
+    throw new Error(authManager?.getSafeErrorMessage(errorData) || getSafeErrorMessage(errorData));
   }
   return r.json();
+}
+
+function getSafeErrorMessage(errorData) {
+  if (typeof errorData === 'string') return errorData;
+  if (errorData?.detail) return errorData.detail;
+  if (errorData?.message) return errorData.message;
+  if (errorData?.error) return errorData.error;
+  return 'Đã xảy ra lỗi không xác định';
 }
 
 // ── HOME ──
@@ -1289,6 +1320,11 @@ function updateTypeSetupUI() {
 
 // ── INIT ──
 document.addEventListener('DOMContentLoaded', () => {
+  // Initialize auth manager and update UI
+  if (typeof authManager !== 'undefined') {
+    authManager.updateAuthUI();
+  }
+
   // tabs
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', e => {
     e.preventDefault();
