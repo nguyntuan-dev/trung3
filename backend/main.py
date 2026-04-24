@@ -71,9 +71,13 @@ def ensure_schema_columns():
     if "users" not in inspector.get_table_names():
         return
     user_cols = {c["name"] for c in inspector.get_columns("users")}
-    if "is_admin" not in user_cols:
-        with engine.begin() as conn:
+    with engine.begin() as conn:
+        if "password_hash" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN password_hash TEXT"))
+        if "is_admin" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+        if "is_active" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
