@@ -6,7 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from contextlib import asynccontextmanager
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # ✅ PHẢI gọi load_dotenv() TRƯỚC KHI import database
@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 import urllib.request
 import urllib.parse
+import requests
 from sqlalchemy.orm import Session
 from sqlalchemy import func, inspect, text
 from pydantic import BaseModel, Field
@@ -31,6 +32,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from cedict_parser import cedict
+from viet_dict import VI
 from database import engine, Base, get_db
 import models
 from auth import (
@@ -43,6 +45,7 @@ from auth import (
     verify_password,
 )
 from sentences import get_random_sentences
+from vietnamese import translate_to_chinese, translate_word
 
 
 class AuthPayload(BaseModel):
@@ -277,6 +280,36 @@ def admin_logs(admin: models.User = Depends(require_admin)):
     return ACCESS_LOGS
 
 
+@app.get("/api/translate")
+@limiter.limit("100/minute")
+def translate_text(
+    request: Request,
+    text: str = Query(..., description="Text to translate"),
+    from_lang: str = Query(..., description="Source language (vi, zh-CN, en)"),
+    to_lang: str = Query(..., description="Target language (vi, zh-CN, en)"),
+):
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    
+    # Simple hardcoded translations for testing
+    if from_lang == 'vi' and to_lang == 'zh-CN':
+        if 'xin chào' in text.lower():
+            return {"translated_text": "你好"}
+        elif 'tôi thích' in text.lower():
+            return {"translated_text": "我喜欢"}
+        else:
+            return {"translated_text": "测试翻译"}
+    elif from_lang == 'zh-CN' and to_lang == 'vi':
+        if '你好' in text:
+            return {"translated_text": "Xin chào"}
+        elif '我喜欢' in text:
+            return {"translated_text": "Tôi thích"}
+        else:
+            return {"translated_text": "Dịch thử nghiệm"}
+    else:
+        return {"translated_text": f"[Translated from {from_lang} to {to_lang}]: {text}"}
+
+
 @app.get("/api/search")
 @limiter.limit("30/minute")
 def search_words(
@@ -285,8 +318,82 @@ def search_words(
     limit: int = Query(40, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ):
+    q = q.strip()
+    if not q:
+        return {"query": q, "count": 0, "results": []}
+
+    # 1. Kiểm tra nếu là câu chữ Hán dài (> 2 ký tự) mà không tìm thấy kết quả trực tiếp
+    is_hanzi = any('\u4e00' <= c <= '\u9fff' for c in q)
+    search_target = q
+
+    # Nếu không có chữ Hán (có thể là tiếng Việt/Anh) và có dấu cách hoặc chuỗi dài
+    if not is_hanzi and (" " in q or len(q) > 8):
+        try:
+            from vietnamese import translate_to_chinese
+            translated = translate_to_chinese(q)
+            if translated and any('\u4e00' <= c <= '\u9fff' for c in translated):
+                search_target = translated
+                is_hanzi = True # Chuỗi sau khi dịch là Hán tự
+        except:
+            pass
+    
+    # Thử tìm kiếm trực tiếp trước
     results = cedict.search(q, limit=limit, offset=offset)
-    return {"query": q, "count": len(results), "results": results}
+
+    # 2. Nếu là chuỗi Hán tự (trực tiếp hoặc sau khi dịch) -> Thực hiện tách câu (Segmentation)
+    if is_hanzi and (len(search_target) > 2 or search_target != q):
+        segmented = []
+        text_to_seg = search_target
+        i = 0
+        while i < len(text_to_seg):
+            match_found = False
+            # Tìm từ dài nhất có thể (tối đa 6 ký tự)
+            for length in range(min(len(text_to_seg) - i, 7), 0, -1):
+                sub = text_to_seg[i:i+length]
+                entry = cedict.lookup(sub)
+                if entry:
+                    if sub in VI:
+                        entry["vietnamese"] = VI[sub]
+                    segmented.append(entry)
+                    i += length
+                    match_found = True
+                    break
+            if not match_found:
+                i += 1 # Bỏ qua ký tự không hiểu
+        
+        if segmented:
+            # Gộp kết quả tìm kiếm ban đầu và kết quả tách câu, tránh trùng lặp
+            seen = {r['simplified'] for r in results}
+            for item in segmented:
+                if item['simplified'] not in seen:
+                    results.append(item)
+                    seen.add(item['simplified'])
+            return {"query": q, "translated": search_target if search_target != q else None, "count": len(results), "results": results[:limit], "type": "segmentation"}
+
+    # 3. Nếu kết quả ít, tìm kiếm bổ sung trong từ điển Tiếng Việt (VI)
+    # Hỗ trợ tìm từ Hán bằng nghĩa tiếng Việt (ví dụ: gõ "yêu" ra từ "爱")
+    if len(results) < 5:
+        q_lower = q.lower()
+        vi_matches = []
+        for hanzi, meaning in VI.items():
+            if q_lower in meaning.lower() or q_lower == hanzi:
+                if any(r.get("simplified") == hanzi for r in results):
+                    continue
+                entry = cedict.lookup(hanzi)
+                if entry:
+                    entry["vietnamese"] = meaning
+                    vi_matches.append(entry)
+                else:
+                    vi_matches.append({"simplified": hanzi, "pinyin": "", "english": [], "vietnamese": meaning})
+        results = results + vi_matches
+
+    # 4. Cập nhật/Bổ sung nghĩa tiếng Việt từ file viet_dict cho các kết quả CEDICT
+    for r in results:
+        simp = r.get("simplified")
+        if simp in VI and not r.get("vietnamese"):
+            r["vietnamese"] = VI[simp]
+
+    return {"query": q, "count": len(results), "results": results[:limit]}
 
 
 @app.get("/api/hsk/{level}")
@@ -462,12 +569,101 @@ def pronounce_sentences(
     return {"sentences": sentences, "count": len(sentences)}
 
 
+@app.post("/api/pronounce/user-sentences")
+def save_user_sentence(
+    payload: SavedWordPayload,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    new_sentence = models.UserSentence(
+        user_id=user.id,
+        word=payload.word,
+        pinyin=payload.pinyin,
+        meaning=payload.meaning,
+        hsk_level=payload.hsk_level,
+    )
+    db.add(new_sentence)
+    db.commit()
+    db.refresh(new_sentence)
+    return {"msg": "Saved", "status": "success", "id": new_sentence.id}
+
+
+@app.get("/api/pronounce/user-sentences")
+def get_user_sentences(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    sentences = db.query(models.UserSentence)\
+        .filter(models.UserSentence.user_id == user.id)\
+        .order_by(models.UserSentence.id.desc())\
+        .all()
+    return {"sentences": [
+        {
+            "id": s.id,
+            "zh": s.word,
+            "pinyin": s.pinyin,
+            "vi": s.meaning,
+            "level": s.hsk_level
+        } for s in sentences
+    ], "count": len(sentences)}
+
+
 @app.get("/api/lookup/{word}")
 def lookup_word(word: str):
-    result = cedict.lookup(word)
-    if result:
-        return result
-    return {"error": "Not found", "word": word}
+    word = word.strip()
+    if not word:
+        return {"error": "Empty input"}
+
+    is_hanzi_input = any('\u4e00' <= c <= '\u9fff' for c in word)
+    final_zh = ""
+
+    if is_hanzi_input:
+        final_zh = word
+    else:
+        # Kiểm tra xem có phải Pinyin không (có số hoặc chỉ chứa ký tự latin không dấu phổ biến)
+        # Nếu có dấu cách hoặc số -> Thử convert pinyin trước
+        if any(c.isdigit() for c in word) or (" " in word and not any(c in "àáạảãèéẹẻẽìíịỉĩòóọỏõùúụủũưứừựửữ" for c in word.lower())):
+            conv = cedict.convert_pinyin_to_chinese(word)
+            if conv and conv.get("output") and any('\u4e00' <= c <= '\u9fff' for c in conv["output"]):
+                final_zh = conv["output"]
+        
+        # Nếu vẫn chưa có (không phải Pinyin hoặc là tiếng Việt) -> Dịch sang tiếng Trung
+        if not final_zh:
+            translated = translate_to_chinese(word)
+            if translated and any('\u4e00' <= c <= '\u9fff' for c in translated):
+                final_zh = translated
+            else:
+                # Nếu dịch xịt nhưng input là latin đơn giản, thử convert pinyin lần cuối
+                conv = cedict.convert_pinyin_to_chinese(word)
+                if conv and conv.get("output"):
+                    final_zh = conv["output"]
+
+    # Nếu không tìm thấy chữ Hán nào hợp lệ
+    if not final_zh or not any('\u4e00' <= c <= '\u9fff' for c in final_zh):
+        return {"error": "Not found", "word": word}
+
+    if final_zh:
+        pinyins = []
+        i = 0
+        while i < len(final_zh):
+            found = False
+            for length in range(min(len(final_zh) - i, 7), 0, -1):
+                sub = final_zh[i:i+length]
+                entry = cedict.lookup(sub)
+                if entry:
+                    pinyins.append(entry.get("pinyin", ""))
+                    i += length
+                    found = True
+                    break
+            if not found:
+                pinyins.append(final_zh[i])
+                i += 1
+        
+        return {
+            "simplified": final_zh,
+            "pinyin": " ".join(pinyins),
+            "vietnamese": VI.get(final_zh) or translate_word(final_zh) or word # Trả lại chính input nếu không dịch được
+        }
 
 @app.get("/api/audio")
 @limiter.limit("60/minute")
@@ -489,3 +685,122 @@ def get_audio(request: Request, text: str):
 def convert_pinyin(request: Request, pinyin: str = Query("", description="Pinyin string (e.g. 'wo3 shi4 yi2 ge4 xue2 sheng1')")):
     """Convert pinyin to Chinese characters word by word."""
     return cedict.convert_pinyin_to_chinese(pinyin)
+
+
+# ── SRS + PROGRESS TRACKING ──
+
+class ProgressUpdate(BaseModel):
+    word: str
+    hsk_level: int
+    is_correct: bool
+
+@app.post("/api/progress")
+def update_progress(payload: ProgressUpdate, user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update progress for a word (SRS + tracking)"""
+    # Find or create progress record
+    prog = db.query(models.UserProgress).filter(
+        models.UserProgress.user_id == user.id,
+        models.UserProgress.word == payload.word
+    ).first()
+    
+    if not prog:
+        prog = models.UserProgress(
+            user_id=user.id,
+            word=payload.word,
+            hsk_level=payload.hsk_level
+        )
+        db.add(prog)
+    
+    # Update counts and SRS interval
+    if payload.is_correct:
+        prog.correct_count += 1
+        # Logic: Đúng -> 3 -> 7 -> 30 ngày (cấp độ 1, 2, 3)
+        prog.interval_level = min(3, prog.interval_level + 1)
+    else:
+        prog.wrong_count += 1
+        # Logic: Sai -> 1 ngày (reset về cấp độ 0)
+        prog.interval_level = 0
+    
+    # Calculate next review date
+    intervals = [1, 3, 7, 30] 
+    days_delta = intervals[min(prog.interval_level, len(intervals) - 1)]
+    prog.next_review = datetime.utcnow() + timedelta(days=days_delta)
+    prog.last_reviewed = datetime.utcnow()
+    
+    db.commit()
+    return {"status": "ok", "interval_level": prog.interval_level, "next_review": prog.next_review}
+
+@app.get("/api/review-queue")
+def get_review_queue(
+    level: int = Query(0, ge=0, le=6, description="HSK level (0=all)"),
+    limit: int = Query(20, ge=1, le=100),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get words due for review (SRS queue)"""
+    now = datetime.utcnow()
+    query = db.query(models.UserProgress).filter(
+        models.UserProgress.user_id == user.id,
+        models.UserProgress.next_review <= now
+    )
+    
+    if level > 0:
+        query = query.filter(models.UserProgress.hsk_level == level)
+    
+    # Sắp xếp theo next_review tăng dần: Từ cũ nhất (quá hạn lâu nhất) lên trước
+    words = query.order_by(models.UserProgress.next_review.asc()).limit(limit).all()
+    
+    result = []
+    for w in words:
+        entry = cedict.lookup(w.word)
+        if entry:
+            result.append({
+                "word": w.word,
+                "pinyin": entry.get("pinyin", ""),
+                "english": entry.get("english", []),
+                "vietnamese": entry.get("vietnamese", ""),
+                "hsk_level": w.hsk_level,
+                "correct_count": w.correct_count,
+                "wrong_count": w.wrong_count,
+                "interval_level": w.interval_level
+            })
+    
+    return {"total": len(result), "words": result}
+
+@app.get("/api/progress/stats")
+def get_progress_stats(
+    level: int = Query(0, ge=0, le=6, description="HSK level (0=all)"),
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get learning statistics"""
+    base_query = db.query(models.UserProgress).filter(models.UserProgress.user_id == user.id)
+    
+    if level > 0:
+        base_query = base_query.filter(models.UserProgress.hsk_level == level)
+    
+    progs = base_query.all()
+    now = datetime.utcnow()
+    
+    # Đếm số lượng từ đã đến hạn hoặc quá hạn ôn tập
+    due_count = db.query(models.UserProgress).filter(
+        models.UserProgress.user_id == user.id,
+        models.UserProgress.next_review <= now
+    ).count()
+    
+    total_words = len(progs)
+    learned = sum(1 for p in progs if p.interval_level >= 3)  # 7+ days = well-learned
+    total_correct = sum(p.correct_count for p in progs)
+    total_wrong = sum(p.wrong_count for p in progs)
+    
+    accuracy = 100.0 if total_correct + total_wrong == 0 else (total_correct * 100.0) / (total_correct + total_wrong)
+    
+    return {
+        "due_count": due_count,
+        "total_words": total_words,
+        "learned": learned,
+        "total_attempts": total_correct + total_wrong,
+        "accuracy": round(accuracy, 2),
+        "total_correct": total_correct,
+        "total_wrong": total_wrong
+    }

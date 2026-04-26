@@ -112,6 +112,16 @@ def translate_batch(words: list[str]) -> dict[str, str]:
     return {w: _cache.get(w, "") for w in words}
 
 
+def translate_to_chinese(text: str) -> str:
+    """Translate Vietnamese/English text to Chinese for searching."""
+    try:
+        from deep_translator import GoogleTranslator
+        return GoogleTranslator(source='auto', target='zh-CN').translate(text)
+    except Exception as e:
+        print(f"[viet] Search translate error: {e}")
+        return ""
+
+
 def get_translation(word: str) -> str:
     """Get Vietnamese translation for a word (checks cache and static VI dict)."""
     return VI.get(word) or _cache.get(word, "")

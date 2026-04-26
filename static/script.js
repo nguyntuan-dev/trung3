@@ -27,27 +27,159 @@ let quizTimerInt = null;
 let pronounceRecognizer = null;
 let pronounceCurrentSentence = null;
 
+// Hàm xử lý tra cứu thông minh và tự động điền form
+async function handleSmartLookup(inputEl) {
+  const val = inputEl.value.trim();
+  if (val.length < 1) return;
+
+  // Hiệu ứng chờ tải
+  inputEl.style.opacity = '0.6';
+  const originalPlaceholder = inputEl.placeholder;
+  inputEl.placeholder = 'Đang dịch...';
+
+  try {
+    const data = await api(`/api/lookup/${encodeURIComponent(val)}`);
+    if (data.simplified) {
+      const zhInp = document.getElementById('add-speech-zh');
+      const pyInp = document.getElementById('add-speech-py');
+      const viInp = document.getElementById('add-speech-vi');
+      
+      // Chỉ cập nhật nếu ô đó đang trống hoặc không phải ô đang nhập để tránh ghi đè người dùng
+      if (zhInp && (zhInp !== inputEl)) zhInp.value = data.simplified;
+      if (pyInp && (pyInp !== inputEl)) pyInp.value = data.pinyin || '';
+      if (viInp && (viInp !== inputEl)) viInp.value = data.vietnamese || '';
+    }
+  } catch (e) {
+    console.error("Smart lookup error:", e);
+  } finally {
+    inputEl.style.opacity = '1';
+    inputEl.placeholder = originalPlaceholder;
+  }
+}
+
+// Hàm gọi API dịch từ backend
+async function translateText(text, fromLang, toLang) {
+  try {
+    const response = await api(`/api/translate?text=${encodeURIComponent(text)}&from_lang=${fromLang}&to_lang=${toLang}`);
+    return response.translated_text;
+  } catch (error) {
+    console.error('Translation error:', error);
+    return null;
+  }
+}
+
+// Hàm tự động dịch câu dựa trên ngôn ngữ đầu vào
+async function autoTranslateSentence(inputEl) {
+  const val = inputEl.value.trim();
+  if (val.length < 2) return; // Chỉ dịch khi có ít nhất 2 ký tự
+
+  console.log('autoTranslateSentence called for input:', inputEl.id, 'value:', val);
+  
+  // Hiệu ứng chờ tải
+  inputEl.style.opacity = '0.6';
+  const originalPlaceholder = inputEl.placeholder;
+  inputEl.placeholder = 'Đang dịch...';
+
+  try {
+    const zhInp = document.getElementById('add-speech-zh');
+    const pyInp = document.getElementById('add-speech-py');
+    const viInp = document.getElementById('add-speech-vi');
+
+    let zh = zhInp?.value.trim() || '';
+    let py = pyInp?.value.trim() || '';
+    let vi = viInp?.value.trim() || '';
+
+    // Xác định ngôn ngữ đầu vào và dịch sang 2 ngôn ngữ còn lại
+    if (inputEl === zhInp && zh && !py && !vi) {
+      // Đầu vào là tiếng Trung, dịch sang tiếng Việt và Pinyin
+      const viTranslation = await translateText(zh, 'zh-CN', 'vi');
+      if (viTranslation) viInp.value = viTranslation;
+      
+      // Tạo Pinyin từ tiếng Trung (có thể cần API riêng hoặc logic xử lý)
+      // Hiện tại để trống, có thể thêm logic sau
+      
+    } else if (inputEl === viInp && vi && !zh && !py) {
+      // Đầu vào là tiếng Việt, dịch sang tiếng Trung và Pinyin
+      const zhTranslation = await translateText(vi, 'vi', 'zh-CN');
+      if (zhTranslation) zhInp.value = zhTranslation;
+      
+      // Tạo Pinyin từ tiếng Trung dịch được
+      if (zhTranslation) {
+        // Có thể thêm logic tạo Pinyin từ tiếng Trung
+      }
+      
+    } else if (inputEl === pyInp && py && !zh && !vi) {
+      // Đầu vào là Pinyin, dịch sang tiếng Trung và tiếng Việt
+      // Pinyin sang tiếng Trung có thể phức tạp, có thể bỏ qua hoặc dùng API khác
+      // Hiện tại để trống
+    }
+
+  } catch (e) {
+    console.error("Auto translation error:", e);
+  } finally {
+    inputEl.style.opacity = '1';
+    inputEl.placeholder = originalPlaceholder;
+  }
+}
+
 function loadPronounceLevel(level = 1) {
   S.pronounce.level = level;
   const list = document.getElementById('pronounce-list');
   if (!list) return;
-  list.innerHTML = '<p class="muted">Đang tải câu luyện nói...</p>';
-  api(`/api/pronounce/sentences?level=${level}&count=12`)
+  
+  // Thêm giao diện nhập câu nếu chọn level 0 (Câu của tôi)
+  let addHtml = '';
+  if (level === 0) {
+    addHtml = `
+      <div id="add-speech-form" style="grid-column: 1 / -1; background: #fff; padding: 30px; border-radius: 20px; margin-bottom: 25px; border: 1px solid var(--border); box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 15px; text-align: left;">
+        <h3 style="margin-bottom:20px; font-size:1.5rem; color:var(--accent); text-align:center;">➕ Thêm câu luyện nói cá nhân</h3>
+        
+        <div style="width: 100%;">
+          <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; font-weight: 600;">📝 Nhập câu chữ Hán:</div>
+          <input type="text" id="add-speech-zh" placeholder="Ví dụ: 我想学汉语..." class="auth-input" style="font-size:1.6rem; padding:15px; color:var(--zh-color); font-weight:bold; width: 100%; display: block;">
+        </div>
+
+        <div id="add-speech-conversion" style="padding: 15px; background: var(--accent-light); border-radius: 12px; display: none; border-left: 5px solid var(--accent); box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-top: -5px;">
+          <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 10px;">✨ Gợi ý chữ Hán (từ Pinyin):</div>
+          <div id="add-speech-conversion-result" style="font-size: 2.2rem; color: var(--zh-color); font-weight: bold; cursor: pointer;"></div>
+          <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 5px;">(Bấm vào kết quả trên để áp dụng vào ô nhập)</div>
+        </div>
+
+        <div style="display:flex; gap:15px; flex-wrap: wrap; width: 100%;">
+          <div style="flex:1; min-width: 250px;">
+            <div style="font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; font-weight: 600;">📝 Pinyin:</div>
+            <input type="text" id="add-speech-py" placeholder="wo3 xiang3 xue2..." class="auth-input" style="font-size:1.1rem; padding:12px; width: 100%; display: block;">
+          </div>
+          <div style="flex:1; min-width: 250px;">
+            <div style="font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; font-weight: 600;">📖 Nghĩa tiếng Việt:</div>
+            <input type="text" id="add-speech-vi" placeholder="Ví dụ: Tôi muốn học..." class="auth-input" style="font-size:1.1rem; padding:12px; width: 100%; display: block;">
+          </div>
+        </div>
+        <button id="btn-add-speech" class="btn-main" style="width:100%; font-size:1.2rem; padding:18px; margin-top: 10px; display: flex;">💾 Lưu câu này vào danh sách</button>
+      </div>
+    `;
+  }
+
+  list.innerHTML = addHtml + '<p class="muted">Đang tải câu luyện nói...</p>';
+  
+  const path = level === 0 ? '/api/pronounce/user-sentences' : `/api/pronounce/sentences?level=${level}&count=12`;
+
+  api(path)
     .then(res => {
       S.pronounce.qs = res.sentences || [];
       S.pronounce.total = S.pronounce.qs.length;
       S.pronounce.cur = 0;
-      if (!S.pronounce.qs.length) {
-        list.innerHTML = '<p class="muted">Chưa có câu luyện nói cho level này.</p>';
+      if (!S.pronounce.qs.length && level !== 0) {
+        list.innerHTML = addHtml + '<p class="muted">Chưa có câu luyện nói cho level này.</p>';
         return;
       }
-      list.innerHTML = S.pronounce.qs.map((s, i) => `
+      const itemsHtml = S.pronounce.qs.map((s, i) => `
         <button class="pronounce-item" data-idx="${i}" style="width:100%; text-align:left; padding:16px; border:1px solid #e5e7eb; border-radius:16px; background:#fff; margin-bottom:12px; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.04);">
           <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
             <div style="flex:1; min-width:0;">
               <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">
                 <div style="font-size:1.05rem; font-weight:800; color:var(--zh-color);">${s.zh}</div>
-                <span class="pill">HSK ${s.level}</span>
+                <span class="pill">${s.level === 0 ? '⭐ Cá nhân' : 'HSK ' + s.level}</span>
               </div>
               <div class="muted" style="margin-top:4px; line-height:1.5;">${s.pinyin}</div>
               <div style="margin-top:8px; color:#334155; line-height:1.6;">${s.vi}</div>
@@ -56,14 +188,102 @@ function loadPronounceLevel(level = 1) {
           </div>
         </button>
       `).join('');
+      list.innerHTML = addHtml + (itemsHtml || '<p class="muted center">Danh sách trống. Hãy thêm câu đầu tiên của bạn!</p>');
+      
+      // Gán sự kiện sau khi đã render HTML vào list
+      if (level === 0) {
+        document.getElementById('btn-add-speech')?.addEventListener('click', submitUserSentence);
+        
+        const zhInput = document.getElementById('add-speech-zh');
+        const convDisplay = document.getElementById('add-speech-conversion');
+        const convResult = document.getElementById('add-speech-conversion-result');
+
+        // Tích hợp tính năng chuyển đổi Pinyin sang Chữ Hán ngay khi nhập
+        zhInput?.addEventListener('input', async (e) => {
+          const val = e.target.value.trim();
+          if (!val) {
+            convDisplay.style.display = 'none';
+            return;
+          }
+          
+          // Nếu người dùng đang nhập pinyin (không có chữ Hán)
+          if (!/[\u3400-\u9FBF]/.test(val)) {
+             try {
+                const data = await api(`/api/pinyin-to-chinese?pinyin=${encodeURIComponent(val)}`);
+                if (data.output && data.output !== val) {
+                   convDisplay.style.display = 'block';
+                   convResult.textContent = data.output;
+                } else {
+                   convDisplay.style.display = 'none';
+                }
+             } catch(e) {}
+          } else {
+             convDisplay.style.display = 'none';
+          }
+        });
+
+        convResult?.addEventListener('click', () => {
+          zhInput.value = convResult.textContent;
+          convDisplay.style.display = 'none';
+          // Kích hoạt blur để tự động điền Pinyin và Nghĩa
+          handleSmartLookup(zhInput);
+        });
+
+        // Gắn sự kiện blur cho cả 3 ô để tự động đồng bộ hóa
+        const pyInput = document.getElementById('add-speech-py');
+        const viInput = document.getElementById('add-speech-vi');
+
+        [zhInput, pyInput, viInput].forEach(inp => {
+          inp?.addEventListener('blur', (e) => handleSmartLookup(e.target));
+          inp?.addEventListener('input', (e) => autoTranslateSentence(e.target));
+          inp?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitUserSentence(); } });
+        });
+      }
+
       list.querySelectorAll('.pronounce-item').forEach(btn => {
         btn.addEventListener('click', () => startSentenceAssessment(S.pronounce.qs[+btn.dataset.idx]));
       });
       if (!pronounceCurrentSentence) pronounceCurrentSentence = S.pronounce.qs[0] || null;
     })
     .catch(e => {
-      list.innerHTML = `<p class="muted">Lỗi tải câu: ${e.message}</p>`;
+      list.innerHTML = addHtml + `<p class="muted">Lỗi tải câu: ${e.message}</p>`;
+      if (level === 0) document.getElementById('btn-add-speech')?.addEventListener('click', submitUserSentence);
     });
+}
+
+async function submitUserSentence() {
+  let zh = document.getElementById('add-speech-zh').value.trim();
+  let py = document.getElementById('add-speech-py').value.trim();
+  let vi = document.getElementById('add-speech-vi').value.trim();
+  
+  // Nếu chỉ có 1 ngôn ngữ, tự động dịch sang 2 ngôn ngữ còn lại
+  if (zh && !py && !vi) {
+    // Có tiếng Trung, dịch sang tiếng Việt
+    const viTranslation = await translateText(zh, 'zh-CN', 'vi');
+    if (viTranslation) vi = viTranslation;
+  } else if (vi && !zh && !py) {
+    // Có tiếng Việt, dịch sang tiếng Trung
+    const zhTranslation = await translateText(vi, 'vi', 'zh-CN');
+    if (zhTranslation) zh = zhTranslation;
+  } else if (py && !zh && !vi) {
+    // Có Pinyin, có thể dịch sang tiếng Trung và tiếng Việt
+    // Hiện tại để trống, có thể thêm logic sau
+  }
+
+  if (!zh) return alert('Vui lòng nhập câu (có thể bằng tiếng Trung, tiếng Việt, hoặc Pinyin)');
+  
+  try {
+    await api('/api/pronounce/user-sentences', {
+      method: 'POST',
+      body: JSON.stringify({ word: zh, pinyin: py, meaning: vi, hsk_level: 0 })
+    });
+    document.getElementById('add-speech-zh').value = '';
+    document.getElementById('add-speech-py').value = '';
+    document.getElementById('add-speech-vi').value = '';
+    loadPronounceLevel(0); // Tải lại danh sách
+  } catch (e) {
+    alert('Lỗi: ' + e.message);
+  }
 }
 
 function playPronounceSample() {
@@ -116,22 +336,41 @@ function startPronunciationAssessment(sentence) {
     const result = event.results[0][0].transcript;
     const confidence = event.results[0][0].confidence;
     
-    // Logic so khớp đơn giản (Normalize trước khi so sánh)
     const target = normalizeChinese(sentence.zh);
     const spoken = normalizeChinese(result);
     
-    let score = 0;
-    if (spoken === target) score = 100;
-    else {
-      let matchCount = 0;
-      const targetChars = Array.from(target);
-      targetChars.forEach(c => { if(spoken.includes(c)) matchCount++; });
-      score = Math.round((matchCount / targetChars.length) * 100);
-    }
+    // Thuật toán chấm điểm chặt chẽ hơn dùng Levenshtein Distance (Khoảng cách chỉnh sửa)
+    const calculateScore = (t, s, conf) => {
+      if (t === s) return 100;
+      if (!s) return 0;
+      const n = t.length, m = s.length;
+      const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+      for (let i = 0; i <= n; i++) dp[i][0] = i;
+      for (let j = 0; j <= m; j++) dp[0][j] = j;
+      for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+          const cost = t[i - 1] === s[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+      }
+      const sim = 1 - dp[n][m] / Math.max(n, m);
+      return Math.round(sim * 100 * (0.8 + 0.2 * conf)); // Kết hợp với độ tin cậy của AI
+    };
+
+    const score = calculateScore(target, spoken, confidence);
+
+    // Hiển thị trực quan các từ phát âm đúng/sai
+    let feedbackChars = Array.from(target).map(c => 
+      `<span style="color:${spoken.includes(c) ? 'var(--green)' : '#cbd5e1'}; font-size:1.8rem; margin:0 2px;">${c}</span>`
+    ).join('');
 
     document.getElementById('pronounce-score').textContent = score;
     document.getElementById('pronounce-status').textContent = `Bạn đã nói: "${result}"`;
-    document.getElementById('pronounce-word-list').innerHTML = `<p class="center">${score >= 80 ? '🌟 Phát âm rất tốt!' : (score >= 50 ? '👍 Khá ổn, hãy cố gắng hơn.' : '😅 Bạn cần luyện tập thêm câu này.')}</p>`;
+    document.getElementById('pronounce-word-list').innerHTML = `
+      <div class="center" style="margin-bottom:15px;">${feedbackChars}</div>
+      <p class="center" style="font-weight:bold; color:var(--primary); font-size:1.1rem;">${score >= 90 ? '🌟 Hoàn hảo!' : (score >= 70 ? '👍 Rất tốt, gần chính xác rồi.' : (score >= 40 ? '👌 Khá ổn, hãy chú ý hơn.' : '😅 Cần luyện tập thêm.'))}</p>
+      <p class="center muted" style="font-size:0.75rem; margin-top:10px;">Độ tin cậy nhận diện: ${Math.round(confidence * 100)}%</p>
+    `;
   };
 
   pronounceRecognizer.onerror = (e) => {
@@ -477,6 +716,24 @@ async function renderHome() {
   grid.querySelectorAll('.hsk-card').forEach(c => {
     c.addEventListener('click', () => { S.level = +c.dataset.level; openLearn(S.level, 0); });
   });
+
+  // Hiển thị thông báo ôn tập nếu có từ quá hạn
+  if (authManager.user) {
+    try {
+      const stats = await api('/api/progress/stats');
+      const reviewTab = document.querySelector('.tab[data-view="review"]');
+      if (stats.due_count > 0) {
+        if (reviewTab) reviewTab.innerHTML = `Ôn tập <span class="badge-danger">${stats.due_count}</span>`;
+        const homeDueMsg = document.createElement('div');
+        homeDueMsg.className = 'alert-info center';
+        homeDueMsg.style.margin = '20px 0';
+        homeDueMsg.innerHTML = `🔔 Bạn có <strong>${stats.due_count}</strong> từ cần ôn tập ngay hôm nay! <button class="btn-primary-sm" onclick="showView('review'); loadReviewQueue(0);">Ôn ngay</button>`;
+        grid.parentNode.insertBefore(homeDueMsg, grid);
+      } else if (reviewTab) {
+        reviewTab.innerHTML = `Ôn tập`;
+      }
+    } catch (e) {}
+  }
 }
 
 async function handleUpdateHSK() {
@@ -588,6 +845,8 @@ async function openLearn(level, page) {
   const offset = page * S.learnPerPage;
   const info = HSK_INFO.find(h => h.level === level);
   document.getElementById('learn-title').textContent = info?.name || `HSK ${level}`;
+  const levelSelect = document.getElementById('learn-level');
+  if (levelSelect) levelSelect.value = String(level);
 
   try {
     const data = await api(`/api/hsk/${level}?limit=${S.learnPerPage}&offset=${offset}`);
@@ -660,6 +919,143 @@ function renderPagination(total, current, containerId, onClick) {
   }
   el.innerHTML = html;
   el.querySelectorAll('.pg-btn').forEach(b => b.addEventListener('click', () => onClick(+b.dataset.p)));
+}
+
+// ── VIEW MANAGEMENT ──
+function showView(viewName) {
+  S.view = viewName;
+  
+  // Hide all views
+  document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+  
+  // Show target view
+  const targetView = document.getElementById(`view-${viewName}`);
+  if (targetView) targetView.classList.remove('hidden');
+  
+  // Update nav tabs
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const activeTab = document.querySelector(`.tab[data-view="${viewName}"]`);
+  if (activeTab) activeTab.classList.add('active');
+  
+  // Handle view-specific logic
+  if (viewName === 'home') renderHome();
+  else if (viewName === 'learn') openLearn(S.level, 0);
+  else if (viewName === 'saved') openSavedWords();
+  else if (viewName === 'review') loadReviewQueue(0);
+  else if (viewName === 'admin') loadAdmin();
+}
+
+// ── SRS REVIEW ──
+let reviewData = { level: 0, words: [], idx: 0, correct: 0, wrong: 0 };
+
+async function loadReviewQueue(level = 0) {
+  reviewData.level = level;
+  reviewData.idx = 0;
+  reviewData.correct = 0;
+  reviewData.wrong = 0;
+  
+  document.getElementById('review-queue-display').innerHTML = '<p class="muted center">Đang tải...</p>';
+  document.getElementById('review-card').classList.add('hidden');
+  document.getElementById('review-stats').classList.add('hidden');
+  
+  try {
+    const data = await api(`/api/review-queue?level=${level}&limit=20`);
+    reviewData.words = data.words || [];
+    
+    if (!reviewData.words.length) {
+      document.getElementById('review-queue-display').innerHTML = '<p class="muted center">🎉 Bạn đã hoàn thành tất cả bài học! Quay lại sau để ôn tập thêm.</p>';
+      return;
+    }
+    
+    document.getElementById('review-queue-display').innerHTML = '';
+    document.getElementById('review-card').classList.remove('hidden');
+    showReviewCard(0);
+  } catch (e) {
+    document.getElementById('review-queue-display').innerHTML = `<p class="muted center">Lỗi: ${e.message}</p>`;
+  }
+}
+
+function showReviewCard(idx) {
+  if (idx >= reviewData.words.length) {
+    endReviewSession();
+    return;
+  }
+  
+  const word = reviewData.words[idx];
+  document.getElementById('review-word-char').textContent = word.word;
+  
+  // Ẩn Pinyin và Nghĩa lúc mới hiện thẻ
+  const pinyinEl = document.getElementById('review-word-pinyin');
+  const viEl = document.getElementById('review-word-vi');
+  pinyinEl.textContent = word.pinyin || '–';
+  viEl.textContent = word.vietnamese || '–';
+  pinyinEl.classList.add('hidden');
+  viEl.classList.add('hidden');
+
+  // Quản lý hiển thị nút
+  document.getElementById('review-show-answer')?.classList.remove('hidden');
+  document.getElementById('review-actions')?.classList.add('hidden');
+
+  document.getElementById('review-counter').textContent = `${idx + 1} / ${reviewData.words.length}`;
+  document.getElementById('review-correct').textContent = reviewData.correct;
+  document.getElementById('review-wrong').textContent = reviewData.wrong;
+  document.getElementById('review-feedback').textContent = '';
+  
+  reviewData.idx = idx;
+}
+
+function revealReviewAnswer() {
+  document.getElementById('review-word-pinyin')?.classList.remove('hidden');
+  document.getElementById('review-word-vi')?.classList.remove('hidden');
+  document.getElementById('review-show-answer')?.classList.add('hidden');
+  document.getElementById('review-actions')?.classList.remove('hidden');
+}
+
+async function submitReviewAnswer(is_correct) {
+  const word = reviewData.words[reviewData.idx];
+  // Vô hiệu hóa nút để tránh bấm nhiều lần
+  document.querySelectorAll('#review-actions button').forEach(b => b.disabled = true);
+  
+  try {
+    const res = await api('/api/progress', {
+      method: 'POST',
+      body: JSON.stringify({
+        word: word.word,
+        hsk_level: word.hsk_level,
+        is_correct: is_correct
+      })
+    });
+    
+    if (is_correct) {
+      reviewData.correct++;
+      document.getElementById('review-feedback').textContent = '✓ Đúng! Tốt lắm!';
+      document.getElementById('review-feedback').style.color = 'var(--green)';
+    } else {
+      reviewData.wrong++;
+      document.getElementById('review-feedback').textContent = `✗ Sai! Đáp án: ${word.word} (${word.pinyin})`;
+      document.getElementById('review-feedback').style.color = 'var(--red)';
+    }
+    
+    // Auto advance after 1.5s
+    setTimeout(() => {
+      document.querySelectorAll('#review-actions button').forEach(b => b.disabled = false);
+      showReviewCard(reviewData.idx + 1);
+    }, 1500);
+  } catch (e) {
+    alert('Lỗi: ' + e.message);
+  }
+}
+
+function endReviewSession() {
+  document.getElementById('review-card').classList.add('hidden');
+  document.getElementById('review-stats').classList.remove('hidden');
+  
+  const total = reviewData.correct + reviewData.wrong;
+  const accuracy = total === 0 ? 0 : Math.round((reviewData.correct / total) * 100);
+  
+  document.getElementById('review-final-correct').textContent = reviewData.correct;
+  document.getElementById('review-final-wrong').textContent = reviewData.wrong;
+  document.getElementById('review-accuracy').textContent = accuracy + '%';
 }
 
 // ── SEARCH ──
@@ -1335,6 +1731,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (v === 'admin') loadAdmin();
     if (v === 'saved') openSavedWords();
     if (v === 'pronounce') loadPronounceLevel(+document.getElementById('pronounce-level').value);
+    if (v === 'review') loadReviewQueue(+document.getElementById('review-level').value);
   }));
 
   document.getElementById('logo-home')?.addEventListener('click', e => { e.preventDefault(); showView('home'); });
@@ -1375,6 +1772,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // updates
   document.getElementById('btn-update-learn')?.addEventListener('click', handleUpdateHSK);
+  document.getElementById('learn-level')?.addEventListener('change', e => openLearn(+e.target.value, 0));
+  document.getElementById('review-back')?.addEventListener('click', () => showView('home'));
+  document.getElementById('review-level')?.addEventListener('change', e => loadReviewQueue(+e.target.value));
+
+  // SRS Review actions
+  document.getElementById('review-show-answer')?.addEventListener('click', revealReviewAnswer);
+  document.getElementById('review-btn-correct')?.addEventListener('click', () => submitReviewAnswer(true));
+  document.getElementById('review-btn-wrong')?.addEventListener('click', () => submitReviewAnswer(false));
 
   document.getElementById('auth-submit')?.addEventListener('click', () => authManager.submitAuth());
   document.getElementById('auth-register')?.addEventListener('click', () => authManager.submitRegister());
@@ -1480,12 +1885,33 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('fc-next')?.addEventListener('click', () => nextFC(1));
   document.getElementById('fc-prev')?.addEventListener('click', () => nextFC(-1));
   document.getElementById('fc-shuffle')?.addEventListener('click', shuffleFC);
-  document.getElementById('fc-easy')?.addEventListener('click', () => {
+  document.getElementById('fc-easy')?.addEventListener('click', async () => {
     const w = S.fcDeck[S.fcIdx];
-    if (w) { toggleLearned(w.simplified); }
+    if (w) { 
+      toggleLearned(w.simplified); 
+      // Lưu trạng thái đúng vào SRS
+      try {
+        await api('/api/progress', {
+          method: 'POST',
+          body: JSON.stringify({ word: w.simplified, hsk_level: w.hsk || 0, is_correct: true })
+        });
+      } catch(e) {}
+    }
     nextFC(1);
   });
-  document.getElementById('fc-hard')?.addEventListener('click', () => nextFC(1));
+  document.getElementById('fc-hard')?.addEventListener('click', async () => {
+    const w = S.fcDeck[S.fcIdx];
+    if (w) {
+      // Lưu trạng thái sai vào SRS
+      try {
+        await api('/api/progress', {
+          method: 'POST',
+          body: JSON.stringify({ word: w.simplified, hsk_level: w.hsk || 0, is_correct: false })
+        });
+      } catch(e) {}
+    }
+    nextFC(1);
+  });
   document.getElementById('fc-level')?.addEventListener('change', e => initFC(+e.target.value));
   document.getElementById('fc-mode')?.addEventListener('change', () => initFC(+document.getElementById('fc-level').value));
 
@@ -1593,8 +2019,32 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSentence();
   });
 
+  // ── NAVIGATION ──
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const view = tab.dataset.view;
+      if (view) showView(view);
+    });
+  });
+
+  // review specific
+  document.getElementById('review-back')?.addEventListener('click', () => showView('home'));
+  document.getElementById('review-level')?.addEventListener('change', (e) => loadReviewQueue(+e.target.value));
+  document.getElementById('review-show-answer')?.addEventListener('click', revealReviewAnswer);
+  document.getElementById('review-btn-correct')?.addEventListener('click', () => submitReviewAnswer(true));
+  document.getElementById('review-btn-wrong')?.addEventListener('click', () => submitReviewAnswer(false));
+  document.getElementById('review-btn-skip')?.addEventListener('click', () => showReviewCard(reviewData.idx + 1));
+  document.getElementById('review-btn-again')?.addEventListener('click', () => loadReviewQueue(reviewData.level));
+
   // boot
   authManager.updateAuthUI();
+  
+  // Thêm option "Câu của tôi" vào selector nếu chưa có
+  const pLevel = document.getElementById('pronounce-level');
+  if (pLevel && !pLevel.querySelector('option[value="0"]')) {
+    pLevel.insertAdjacentHTML('afterbegin', '<option value="0">⭐ Câu của tôi</option>');
+  }
+
   if (!authManager.user) {
     showView('auth');
   } else {

@@ -8,6 +8,13 @@
   <meta name="description" content="Tra cứu từ vựng tiếng Trung từ từ điển CC-CEDICT, học theo chuẩn HSK 1-6.">
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="icon" href="/static/ChatGPT Image 22_18_16 20 thg 4, 2026.png" />
+  <style>
+    /* Ghi đè độ rộng container để giao diện rộng rãi hơn */
+    .container {
+      max-width: 1200px !important;
+      width: 95% !important;
+    }
+  </style>
 </head>
 
 <body>
@@ -28,6 +35,7 @@
         <a href="#" class="tab" data-view="quiz">Kiểm tra</a>
         <a href="#" class="tab" data-view="pronounce">Luyện nói</a>
         <a href="#" class="tab" data-view="saved">Từ đã lưu</a>
+        <a href="#" class="tab" data-view="review">Ôn tập SRS</a>
         <a href="#" class="tab hidden" id="admin-tab" data-view="admin">Admin</a>
       </nav>
     </div>
@@ -58,7 +66,18 @@
           style="margin-left: auto; font-size: 1.2rem;">🔄</button>
       </div>
 
-      <div class="learn-toolbar">
+      <div class="learn-toolbar" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <label style="font-weight:600; display:flex; align-items:center; gap:8px;">
+          Cấp độ
+          <select id="learn-level" class="sel">
+            <option value="1">HSK 1</option>
+            <option value="2">HSK 2</option>
+            <option value="3">HSK 3</option>
+            <option value="4">HSK 4</option>
+            <option value="5">HSK 5</option>
+            <option value="6">HSK 6</option>
+          </select>
+        </label>
         <div class="pill" id="learn-progress">0 / 0</div>
       </div>
 
@@ -244,7 +263,7 @@
           </div>
 
           <input type="text" id="type-input" placeholder="Gõ chữ Hán hoặc Pinyin..."
-            style="font-size: 2rem; padding: 10px; width: 80%; max-width: 400px; text-align: center; border: 2px solid #ccc; border-radius: 8px;">
+            style="font-size: 2rem; padding: 15px; width: 90%; max-width: 800px; text-align: center; border: 2px solid #ccc; border-radius: 12px;">
         </div>
       </div>
 
@@ -283,7 +302,7 @@
           <div style="margin-bottom: 20px; text-align: center;">
             <label style="font-size: 0.95rem; color: #666;">Gõ bằng Pinyin (cách nhau bằng khoảng trắng):</label>
             <input type="text" id="sentence-input" placeholder="Ví dụ: wo3 shi4 yi2 ge4 xue2 sheng1"
-              style="font-size: 1.5rem; padding: 12px; width: 90%; max-width: 600px; text-align: center; border: 2px solid #ccc; border-radius: 8px; margin-top: 10px;">
+              style="font-size: 1.5rem; padding: 16px; width: 95%; max-width: 1000px; text-align: center; border: 2px solid #ccc; border-radius: 12px; margin-top: 10px;">
 
             <!-- Real-time conversion display -->
             <div id="sentence-conversion"
@@ -333,7 +352,7 @@
         </select>
       </div>
       <div class="quiz-setup" style="margin-bottom:18px;">
-        <div class="muted" style="max-width:800px; line-height:1.6;">
+        <div class="muted" style="max-width:100%; line-height:1.6;">
           Chọn một câu dài để luyện phát âm. Bấm <strong>Phát mẫu</strong> để nghe trước, sau đó bấm <strong>Bắt đầu ghi âm</strong> để đọc to câu tiếng Trung.
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
@@ -368,6 +387,69 @@
       </div>
       <div class="word-list" id="saved-words-list">
         <p class="muted center">Không có từ đã lưu nào.</p>
+      </div>
+    </div>
+
+    <!-- SRS REVIEW -->
+    <div id="view-review" class="view hidden">
+      <div class="view-bar">
+        <button class="btn-back" id="review-back">← Quay lại</button>
+        <h2>Ôn tập SRS</h2>
+        <select id="review-level" class="sel" style="margin-left: auto;">
+          <option value="0">Tất cả cấp độ</option>
+          <option value="1">HSK 1</option>
+          <option value="2">HSK 2</option>
+          <option value="3">HSK 3</option>
+          <option value="4">HSK 4</option>
+          <option value="5">HSK 5</option>
+          <option value="6">HSK 6</option>
+        </select>
+      </div>
+
+      <div id="review-queue-display">
+        <p class="muted center">Đang tải...</p>
+      </div>
+
+      <div id="review-card" class="hidden" style="text-align:center; padding:40px 20px; background:var(--bg-card); border-radius:12px; margin:20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+          <span class="pill" id="review-counter">1 / 0</span>
+          <div>
+            <span class="pill" style="background:var(--green); color:#fff; margin-right:10px;">✓ <span id="review-correct">0</span></span>
+            <span class="pill" style="background:var(--red); color:#fff;">✗ <span id="review-wrong">0</span></span>
+          </div>
+        </div>
+
+        <div id="review-word-char" style="font-size:4rem; font-weight:bold; color:var(--zh-color); margin:20px 0;">–</div>
+        <div id="review-word-pinyin" style="font-size:1.2rem; color:#666; margin:10px 0;">–</div>
+        <div id="review-word-vi" style="font-size:1.1rem; color:var(--primary); margin:10px 0;">–</div>
+
+        <div style="margin-top:30px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+          <!-- Nút hiện đáp án -->
+          <button class="btn-main" id="review-show-answer">Xem đáp án</button>
+          
+          <!-- Cụm nút đánh giá (ẩn lúc đầu) -->
+          <div id="review-actions" class="hidden" style="display:flex; gap:12px;">
+            <button class="btn-s btn-red" id="review-btn-wrong">✗ Sai</button>
+            <button class="btn-s btn-green" id="review-btn-correct">✓ Đúng</button>
+          </div>
+          <button class="btn-s btn-ghost" id="review-btn-skip">⊘ Bỏ qua</button>
+        </div>
+
+        <div style="margin-top:20px; color:#999; font-size:0.9rem;">
+          <p id="review-feedback"></p>
+        </div>
+      </div>
+
+      <div id="review-stats" class="hidden" style="padding:20px; background:var(--bg-card); border-radius:12px; margin:20px; text-align:center;">
+        <h3>Tổng kết</h3>
+        <div style="font-size:1.5rem; margin:10px 0;">
+          Đúng: <span id="review-final-correct" style="color:var(--green); font-weight:bold;">0</span> / 
+          Sai: <span id="review-final-wrong" style="color:var(--red); font-weight:bold;">0</span>
+        </div>
+        <div style="font-size:1.2rem; margin:10px 0;">
+          Độ chính xác: <span id="review-accuracy" style="color:var(--primary); font-weight:bold;">0%</span>
+        </div>
+        <button class="btn-main" id="review-btn-again" style="margin-top:15px;">Làm lại</button>
       </div>
     </div>
 
