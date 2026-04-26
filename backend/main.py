@@ -71,16 +71,46 @@ def user_to_dict(user: models.User) -> dict:
 
 def ensure_schema_columns():
     inspector = inspect(engine)
-    if "users" not in inspector.get_table_names():
-        return
-    user_cols = {c["name"] for c in inspector.get_columns("users")}
+    tables = inspector.get_table_names()
+    
     with engine.begin() as conn:
-        if "password_hash" not in user_cols:
-            conn.execute(text("ALTER TABLE users ADD COLUMN password_hash TEXT"))
-        if "is_admin" not in user_cols:
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
-        if "is_active" not in user_cols:
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
+        # 1. Kiểm tra bảng users
+        if "users" in tables:
+            cols = {c["name"] for c in inspector.get_columns("users")}
+            if "password_hash" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN password_hash TEXT"))
+            if "is_admin" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+            if "is_active" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
+
+        # 2. Kiểm tra bảng saved_words (Đảm bảo có HSK và Pinyin)
+        if "saved_words" in tables:
+            cols = {c["name"] for c in inspector.get_columns("saved_words")}
+            if "hsk_level" not in cols:
+                conn.execute(text("ALTER TABLE saved_words ADD COLUMN hsk_level INTEGER DEFAULT 0"))
+            if "pinyin" not in cols:
+                conn.execute(text("ALTER TABLE saved_words ADD COLUMN pinyin TEXT"))
+
+        # 3. Kiểm tra bảng user_progress (Cho tính năng SRS)
+        if "user_progress" in tables:
+            cols = {c["name"] for c in inspector.get_columns("user_progress")}
+            if "interval_level" not in cols:
+                conn.execute(text("ALTER TABLE user_progress ADD COLUMN interval_level INTEGER DEFAULT 0"))
+            if "next_review" not in cols:
+                conn.execute(text("ALTER TABLE user_progress ADD COLUMN next_review TIMESTAMP"))
+            if "hsk_level" not in cols:
+                conn.execute(text("ALTER TABLE user_progress ADD COLUMN hsk_level INTEGER DEFAULT 0"))
+
+        # 4. Kiểm tra bảng user_sentences (Cho luyện nói cá nhân)
+        if "user_sentences" in tables:
+            cols = {c["name"] for c in inspector.get_columns("user_sentences")}
+            if "hsk_level" not in cols:
+                conn.execute(text("ALTER TABLE user_sentences ADD COLUMN hsk_level INTEGER DEFAULT 0"))
+            if "pinyin" not in cols:
+                conn.execute(text("ALTER TABLE user_sentences ADD COLUMN pinyin TEXT"))
+
+    print("SUCCESS: Database schema synchronized.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

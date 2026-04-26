@@ -19,7 +19,7 @@ class SavedWord(Base):
     __tablename__ = "saved_words"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     word = Column(String, index=True)
     pinyin = Column(String)
     meaning = Column(String)
@@ -29,7 +29,7 @@ class UserSentence(Base):
     __tablename__ = "user_sentences"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     word = Column(String)  # Chinese text
     pinyin = Column(String)
     meaning = Column(String)  # Vietnamese meaning
@@ -39,7 +39,7 @@ class UserAPI(Base):
     __tablename__ = "user_apis"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     api_name = Column(String, nullable=False)
     created_at = Column(String, nullable=False)
 
