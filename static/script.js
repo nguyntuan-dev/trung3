@@ -439,23 +439,32 @@ class AuthManager {
   }
 
   async submitAuth() {
-    const username = document.getElementById('auth-username').value.trim();
-    const password = document.getElementById('auth-password').value;
+    const userInp = document.getElementById('auth-username');
+    const passInp = document.getElementById('auth-password');
+    const username = userInp.value.trim();
+    const password = passInp.value;
     const err = document.getElementById('auth-error');
+    const btn = document.getElementById('auth-submit');
+
     err.classList.add('hidden');
     err.textContent = '';
 
     if (!username || !password) {
       err.textContent = 'Vui lòng nhập username và password.';
       err.classList.remove('hidden');
+      if (!username) userInp.focus(); else passInp.focus();
       return;
     }
 
     try {
+      btn.disabled = true;
+      btn.textContent = 'Đang đăng nhập...';
+
       const res = await api(`/api/auth/login`, {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
+
       this.saveSession(res.token, res.user);
       if (window.location.pathname === '/admin1811') {
         if (!res.user?.is_admin) {
@@ -479,20 +488,30 @@ class AuthManager {
       console.error('Login error:', error);
       err.textContent = this.getSafeErrorMessage(error);
       err.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Đăng nhập';
     }
   }
 
   async submitRegister() {
-    const username = document.getElementById('auth-reg-username').value.trim();
-    const password = document.getElementById('auth-reg-password').value;
-    const passwordConfirm = document.getElementById('auth-reg-password-confirm').value;
+    const userInp = document.getElementById('auth-reg-username');
+    const passInp = document.getElementById('auth-reg-password');
+    const confirmInp = document.getElementById('auth-reg-password-confirm');
+    
+    const username = userInp.value.trim();
+    const password = passInp.value;
+    const passwordConfirm = confirmInp.value;
     const err = document.getElementById('auth-reg-error');
+    const btn = document.getElementById('auth-register');
+
     err.classList.add('hidden');
     err.textContent = '';
 
     if (!username || !password || !passwordConfirm) {
       err.textContent = 'Vui lòng điền tất cả các trường.';
       err.classList.remove('hidden');
+      if (!username) userInp.focus(); else if (!password) passInp.focus(); else confirmInp.focus();
       return;
     }
 
@@ -515,6 +534,9 @@ class AuthManager {
     }
 
     try {
+      btn.disabled = true;
+      btn.textContent = 'Đang tạo tài khoản...';
+
       const res = await api(`/api/auth/register`, {
         method: 'POST',
         body: JSON.stringify({ username, password }),
@@ -535,6 +557,9 @@ class AuthManager {
       console.error('Register error:', error);
       err.textContent = this.getSafeErrorMessage(error);
       err.classList.remove('hidden');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Đăng ký';
     }
   }
 
@@ -543,6 +568,10 @@ class AuthManager {
     const loginForm = document.getElementById('auth-login-form');
     const registerForm = document.getElementById('auth-register-form');
     
+    // Xóa lỗi cũ khi chuyển tab
+    document.getElementById('auth-error').classList.add('hidden');
+    document.getElementById('auth-reg-error').classList.add('hidden');
+
     document.querySelectorAll('.auth-tab').forEach(tab => {
       tab.classList.toggle('active', tab.dataset.mode === mode);
       if (tab.dataset.mode === mode) {
@@ -557,9 +586,11 @@ class AuthManager {
     if (mode === 'login') {
       loginForm.classList.remove('hidden');
       registerForm.classList.add('hidden');
+      document.getElementById('auth-username').focus();
     } else {
       loginForm.classList.add('hidden');
       registerForm.classList.remove('hidden');
+      document.getElementById('auth-reg-username').focus();
     }
   }
 

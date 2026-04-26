@@ -593,19 +593,40 @@ def get_user_sentences(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    sentences = db.query(models.UserSentence)\
+    # 1. Lấy câu tự thêm từ bảng UserSentence
+    custom_sents = db.query(models.UserSentence)\
         .filter(models.UserSentence.user_id == user.id)\
         .order_by(models.UserSentence.id.desc())\
         .all()
-    return {"sentences": [
+    
+    # 2. Lấy từ đã lưu từ bảng SavedWord (những từ bạn bấm Save ở từ điển)
+    saved_words = db.query(models.SavedWord)\
+        .filter(models.SavedWord.user_id == user.id)\
+        .order_by(models.SavedWord.id.desc())\
+        .all()
+
+    # 3. Gộp và format lại cho Frontend (zh, pinyin, vi)
+    results = [
         {
             "id": s.id,
             "zh": s.word,
             "pinyin": s.pinyin,
             "vi": s.meaning,
-            "level": s.hsk_level
-        } for s in sentences
-    ], "count": len(sentences)}
+            "level": 0,
+            "type": "custom"
+        } for s in custom_sents
+    ] + [
+        {
+            "id": w.id,
+            "zh": w.word,
+            "pinyin": w.pinyin,
+            "vi": w.meaning,
+            "level": w.hsk_level,
+            "type": "saved"
+        } for w in saved_words
+    ]
+
+    return {"sentences": results, "count": len(results)}
 
 
 @app.get("/api/lookup/{word}")
