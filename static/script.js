@@ -849,11 +849,14 @@ async function loadAdmin() {
 
 /** Personal Saved Vocabulary */
 let isSavedWordsLoading = false;
+let _savedWordsLastCall = 0; // timestamp guard – ngăn gọi lại trong vòng 3s
 async function openSavedWords() {
   const el = document.getElementById('saved-words-list');
-  if (!el || isSavedWordsLoading) return;
+  const now = Date.now();
+  if (!el || isSavedWordsLoading || now - _savedWordsLastCall < 3000) return;
 
   isSavedWordsLoading = true;
+  _savedWordsLastCall = now;
 
   el.innerHTML = '<p class="muted center">Đang tải danh sách từ vựng...</p>';
   try {
@@ -2111,22 +2114,9 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSentence();
   });
 
-  // ── NAVIGATION ──
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const view = tab.dataset.view;
-      if (view) showView(view);
-    });
-  });
+  // ── NAVIGATION (tab listeners đã được gán ở đầu DOMContentLoaded, không cần lặp lại) ──
 
-  // review specific
-  document.getElementById('review-back')?.addEventListener('click', () => showView('home'));
-  document.getElementById('review-level')?.addEventListener('change', (e) => loadReviewQueue(+e.target.value));
-  document.getElementById('review-show-answer')?.addEventListener('click', revealReviewAnswer);
-  document.getElementById('review-btn-correct')?.addEventListener('click', () => submitReviewAnswer(true));
-  document.getElementById('review-btn-wrong')?.addEventListener('click', () => submitReviewAnswer(false));
-  document.getElementById('review-btn-skip')?.addEventListener('click', () => showReviewCard(reviewData.idx + 1));
-  document.getElementById('review-btn-again')?.addEventListener('click', () => loadReviewQueue(reviewData.level));
+  // (review listeners đã được đăng ký ở trên)
 
   // boot
   authManager.updateAuthUI();
