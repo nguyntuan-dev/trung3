@@ -42,6 +42,16 @@ function debounce(func, wait) {
   };
 }
 
+// ── API Cache: Tránh gọi API trùng lặp ──
+const _apiCache = new Map();
+async function apiCached(path, ttlMs = 60000) {
+  const cached = _apiCache.get(path);
+  if (cached && Date.now() - cached.ts < ttlMs) return cached.data;
+  const data = await api(path);
+  _apiCache.set(path, { data, ts: Date.now() });
+  return data;
+}
+
 // Hàm xử lý tra cứu thông minh và tự động điền form
 async function handleSmartLookup(inputEl) {
   const val = inputEl.value.trim();
@@ -53,7 +63,8 @@ async function handleSmartLookup(inputEl) {
   inputEl.placeholder = 'Đang dịch...';
 
   try {
-    const data = await api(`/api/lookup/${encodeURIComponent(val)}`);
+    // Dùng cache 5 phút để tránh gọi API trùng lặp cho cùng 1 từ
+    const data = await apiCached(`/api/lookup/${encodeURIComponent(val)}`, 300000);
     if (data.simplified) {
       const zhInp = document.getElementById('add-speech-zh');
       const pyInp = document.getElementById('add-speech-py');
@@ -252,8 +263,9 @@ function loadPronounceLevel(level = 1) {
         const debouncedAutoTranslate = debounce((el) => autoTranslateSentence(el), 500);
 
         [zhInput, pyInput, viInput].forEach(inp => {
+          // Chỉ gọi lookup khi blur (rời ô), không gọi mỗi keystroke
           inp?.addEventListener('blur', (e) => handleSmartLookup(e.target));
-          inp?.addEventListener('input', (e) => debouncedAutoTranslate(e.target));
+          // Bỏ autoTranslate khi input để tiết kiệm API; chỉ dịch khi blur
           inp?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitUserSentence(); } });
         });
       }
@@ -1631,7 +1643,28 @@ function renderSentence() {
   });
 
   // Real-time pinyin to Chinese conversion and auto-completion
-  newEl.addEventListener('input', async () => {
+  // Debounced API call (350ms) + cache để tránh gọi API liên tục mỗi keystroke
+  const debouncedPinyinConvert = debounce(async (pinyinText) => {
+    if (!pinyinText || /[\u3400-\u9FBF]/.test(pinyinText)) return;
+    const display = document.getElementById('sentence-conversion');
+    const result = document.getElementById('sentence-conversion-result');
+    try {
+      const cacheKey = `/api/pinyin-to-chinese?pinyin=${encodeURIComponent(pinyinText)}`;
+      const data = await apiCached(cacheKey, 300000); // cache 5 phút
+      if (data.output && /[\u3400-\u9FBF]/.test(data.output)) {
+        newEl.dataset.converted = data.output;
+        result.textContent = data.output;
+        display.style.display = 'block';
+      } else {
+        const localPreview = getSentencePreview(sent, pinyinText);
+        if (!localPreview) display.style.display = 'none';
+      }
+    } catch (e) {
+      console.error('Conversion error:', e);
+    }
+  }, 350);
+
+  newEl.addEventListener('input', () => {
     const current = newEl.value;
     if (current.endsWith(' ')) {
       const convertedInput = convertCompletedSentenceInput(sent, current);
@@ -1652,6 +1685,7 @@ function renderSentence() {
       return;
     }
 
+    // Ưu tiên local preview trước (không tốn API)
     const localPreview = getSentencePreview(sent, pinyinText);
     if (localPreview) {
       newEl.dataset.converted = localPreview;
@@ -1668,24 +1702,9 @@ function renderSentence() {
       return;
     }
 
-    if (/[\u3400-\u9FBF]/.test(pinyinText)) {
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API}/api/pinyin-to-chinese?pinyin=${encodeURIComponent(pinyinText)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.output && /[\u3400-\u9FBF]/.test(data.output)) {
-          newEl.dataset.converted = data.output;
-          result.textContent = data.output;
-          display.style.display = 'block';
-        } else if (!localPreview) {
-          display.style.display = 'none';
-        }
-      }
-    } catch (e) {
-      console.error('Conversion error:', e);
+    // Chỉ gọi API nếu local preview không đủ (có debounce + cache)
+    if (!localPreview && !/[\u3400-\u9FBF]/.test(pinyinText)) {
+      debouncedPinyinConvert(pinyinText);
     }
   });
 }
