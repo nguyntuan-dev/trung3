@@ -688,11 +688,26 @@ function playAudio(text, slow = false) {
 }
 
 // ── API helpers ──
+// Global AbortController: cancel tất cả request pending khi navigate sang view mới
+let _navController = new AbortController();
+
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (authManager?.token) headers.Authorization = `Bearer ${authManager.token}`;
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-  const r = await fetch(API + path, { ...options, headers });
+
+  // Dùng signal của nav controller để hủy request khi user chuyển view
+  const signal = options.signal || _navController.signal;
+
+  let r;
+  try {
+    r = await fetch(API + path, { ...options, headers, signal });
+  } catch (err) {
+    // Bỏ qua AbortError – đây là hủy cố ý, không phải lỗi thật
+    if (err.name === 'AbortError') throw err;
+    throw err;
+  }
+
   if (!r.ok) {
     if (r.status === 401 && !path.startsWith('/api/auth/')) {
       // Session hết hạn – chỉ áp dụng với các API yêu cầu xác thực,
@@ -731,7 +746,10 @@ const HSK_INFO = [
   { level: 6, name: 'HSK 6 · Thành thạo', desc: 'Trình độ học thuật cao', color: '#dc2626' },
 ];
 
+let _isRenderingHome = false;
 async function renderHome() {
+  if (_isRenderingHome) return;
+  _isRenderingHome = true;
   let summary;
   try { summary = await api('/api/hsk'); } catch { summary = HSK_INFO.map(h => ({ level: h.level, total: 0 })); }
 
@@ -772,6 +790,7 @@ async function renderHome() {
       }
     } catch (e) {}
   }
+  _isRenderingHome = false;
 }
 
 async function handleUpdateHSK() {
@@ -984,6 +1003,12 @@ function showView(viewName) {
   }
 
   S.view = viewName;
+
+  // Cancel tất cả request pending từ view trước – tránh pile-up khi Railway chậm
+  _navController.abort();
+  _navController = new AbortController();
+  // Reset home guard để cho phép render lại khi cần
+  if (viewName !== 'home') _isRenderingHome = false;
   
   // 2. Ẩn/Hiện các màn hình
   document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
