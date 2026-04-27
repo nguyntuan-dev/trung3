@@ -21,11 +21,26 @@ const S = {
   typeMode: 'word', // 'word' or 'sentence'
   sentence: { qs: [], cur: 0, right: 0, total: 10 },
   pronounce: { level: 1, qs: [], cur: 0, total: 0 },
+  match: { level: 1, mode: 'meaning', pairs: [], score: 0, combo: 0, timeLeft: 60, timer: null },
+  listen: { level: 1, qs: [], cur: 0, right: 0, wrong: 0, total: 10, timer: null, timeLeft: 10 },
   learned: JSON.parse(localStorage.getItem('hg_learned') || '{}'),
 };
 let quizTimerInt = null;
 let pronounceRecognizer = null;
 let pronounceCurrentSentence = null;
+
+// ── Fix 2: Helper Debounce (Trì hoãn thực thi) ──
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
 
 // Hàm xử lý tra cứu thông minh và tự động điền form
 async function handleSmartLookup(inputEl) {
@@ -198,29 +213,29 @@ function loadPronounceLevel(level = 1) {
         const convDisplay = document.getElementById('add-speech-conversion');
         const convResult = document.getElementById('add-speech-conversion-result');
 
-        // Tích hợp tính năng chuyển đổi Pinyin sang Chữ Hán ngay khi nhập
-        zhInput?.addEventListener('input', async (e) => {
-          const val = e.target.value.trim();
-          if (!val) {
-            convDisplay.style.display = 'none';
-            return;
-          }
-          
-          // Nếu người dùng đang nhập pinyin (không có chữ Hán)
-          if (!/[\u3400-\u9FBF]/.test(val)) {
-             try {
-                const data = await api(`/api/pinyin-to-chinese?pinyin=${encodeURIComponent(val)}`);
-                if (data.output && data.output !== val) {
-                   convDisplay.style.display = 'block';
-                   convResult.textContent = data.output;
-                } else {
-                   convDisplay.style.display = 'none';
-                }
-             } catch(e) {}
-          } else {
-             convDisplay.style.display = 'none';
-          }
-        });
+        // ✔️ Fix 2: Debounce Pinyin conversion (300ms)
+        const debouncedPinyinConv = debounce(async (val) => {
+            if (!val) {
+              convDisplay.style.display = 'none';
+              return;
+            }
+            // Nếu người dùng đang nhập pinyin (không có chữ Hán)
+            if (!/[\u3400-\u9FBF]/.test(val)) {
+               try {
+                  const data = await api(`/api/pinyin-to-chinese?pinyin=${encodeURIComponent(val)}`);
+                  if (data.output && data.output !== val) {
+                     convDisplay.style.display = 'block';
+                     convResult.textContent = data.output;
+                  } else {
+                     convDisplay.style.display = 'none';
+                  }
+               } catch(e) {}
+            } else {
+               convDisplay.style.display = 'none';
+            }
+        }, 300);
+
+        zhInput?.addEventListener('input', (e) => debouncedPinyinConv(e.target.value.trim()));
 
         convResult?.addEventListener('click', () => {
           zhInput.value = convResult.textContent;
@@ -233,9 +248,12 @@ function loadPronounceLevel(level = 1) {
         const pyInput = document.getElementById('add-speech-py');
         const viInput = document.getElementById('add-speech-vi');
 
+        // ✔️ Fix 2: Debounce Auto Translation (500ms)
+        const debouncedAutoTranslate = debounce((el) => autoTranslateSentence(el), 500);
+
         [zhInput, pyInput, viInput].forEach(inp => {
           inp?.addEventListener('blur', (e) => handleSmartLookup(e.target));
-          inp?.addEventListener('input', (e) => autoTranslateSentence(e.target));
+          inp?.addEventListener('input', (e) => debouncedAutoTranslate(e.target));
           inp?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitUserSentence(); } });
         });
       }
@@ -481,7 +499,6 @@ class AuthManager {
           const viewName = window.requestedView;
           window.requestedView = null;
           showView(viewName);
-          if (viewName === 'saved') openSavedWords();
         }
       }
     } catch (error) {
@@ -548,7 +565,6 @@ class AuthManager {
         const viewName = window.requestedView;
         window.requestedView = null;
         showView(viewName);
-        if (viewName === 'saved') openSavedWords();
       } else {
         showView('home');
         renderHome();
@@ -657,28 +673,6 @@ function playAudio(text, slow = false) {
   } else {
     playAudioFallback(text, slow);
   }
-}
-
-// ── Navigation ──
-function showView(name) {
-  if (name !== 'auth' && !authManager.user && !['home', 'search', 'pronounce'].includes(name)) {
-    window.requestedView = name;
-    showView('auth');
-    return;
-  }
-  document.getElementById('view-auth')?.classList.add('hidden');
-  document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
-  if (name === 'auth') {
-    document.getElementById('view-auth')?.classList.remove('hidden');
-    document.getElementById('nav')?.classList.add('hidden');
-  } else {
-    document.getElementById('view-' + name)?.classList.remove('hidden');
-    document.getElementById('nav')?.classList.remove('hidden');
-  }
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === name));
-  S.view = name;
-  window.scrollTo(0, 0);
-  if (name === 'pronounce') loadPronounceLevel(S.pronounce.level || 1);
 }
 
 // ── API helpers ──
@@ -841,10 +835,12 @@ async function loadAdmin() {
 }
 
 /** Personal Saved Vocabulary */
+let isSavedWordsLoading = false;
 async function openSavedWords() {
-  showView('saved');
   const el = document.getElementById('saved-words-list');
-  if (!el) return;
+  if (!el || isSavedWordsLoading) return;
+
+  isSavedWordsLoading = true;
 
   el.innerHTML = '<p class="muted center">Đang tải danh sách từ vựng...</p>';
   try {
@@ -866,11 +862,16 @@ async function openSavedWords() {
     renderWordList(words, 'saved-words-list', true);
   } catch (e) {
     el.innerHTML = `<p class="muted center">Lỗi: ${e.message}</p>`;
+  } finally {
+    isSavedWordsLoading = false;
   }
 }
 
+let isLearnLoading = false;
 async function openLearn(level, page) {
-  showView('learn');
+  if (isLearnLoading) return;
+  isLearnLoading = true;
+
   S.level = level;
   S.learnPage = page;
   const offset = page * S.learnPerPage;
@@ -888,6 +889,8 @@ async function openLearn(level, page) {
     renderPagination(data.total, page, 'learn-pagination', (p) => openLearn(level, p));
   } catch (e) {
     document.getElementById('word-list').innerHTML = `<p class="muted center">Lỗi tải dữ liệu. Hãy kiểm tra backend đã chạy chưa.</p>`;
+  } finally {
+    isLearnLoading = false;
   }
 }
 
@@ -954,32 +957,53 @@ function renderPagination(total, current, containerId, onClick) {
 
 // ── VIEW MANAGEMENT ──
 function showView(viewName) {
+  // ✔️ Chặn Loop: Nếu đang ở đúng view đó rồi thì không làm gì cả
+  if (S.view === viewName && viewName !== 'auth') return;
+
+  // Kiểm tra quyền truy cập (Auth Check)
+  if (viewName !== 'auth' && !authManager.user && !['home', 'search', 'pronounce'].includes(viewName)) {
+    if (viewName !== 'auth') window.requestedView = viewName;
+    showView('auth');
+    return;
+  }
+
   S.view = viewName;
   
-  // Hide all views
+  // 2. Ẩn/Hiện các màn hình
   document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+  document.getElementById('view-auth')?.classList.add('hidden');
   
-  // Show target view
-  const targetView = document.getElementById(`view-${viewName}`);
-  if (targetView) targetView.classList.remove('hidden');
-  
-  // Update nav tabs
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  const activeTab = document.querySelector(`.tab[data-view="${viewName}"]`);
-  if (activeTab) activeTab.classList.add('active');
-  
-  // Handle view-specific logic
+  if (viewName === 'auth') {
+    document.getElementById('view-auth')?.classList.remove('hidden');
+    document.getElementById('nav')?.classList.add('hidden');
+  } else {
+    const targetView = document.getElementById(`view-${viewName}`);
+    if (targetView) targetView.classList.remove('hidden');
+    document.getElementById('nav')?.classList.remove('hidden');
+  }
+
+  // 3. Cập nhật trạng thái Active trên Menu
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === viewName));
+  window.scrollTo(0, 0);
+
+  // 4. Tải dữ liệu đặc thù cho từng màn hình (Single Source of Truth)
   if (viewName === 'home') renderHome();
   else if (viewName === 'learn') openLearn(S.level, 0);
   else if (viewName === 'saved') openSavedWords();
   else if (viewName === 'review') loadReviewQueue(0);
   else if (viewName === 'admin') loadAdmin();
+  else if (viewName === 'pronounce') loadPronounceLevel(S.pronounce.level || 1);
+  else if (viewName === 'flashcard') initFC(+document.getElementById('fc-level').value);
 }
 
 // ── SRS REVIEW ──
 let reviewData = { level: 0, words: [], idx: 0, correct: 0, wrong: 0 };
+let isReviewLoading = false;
 
 async function loadReviewQueue(level = 0) {
+  if (isReviewLoading) return;
+  isReviewLoading = true;
+
   reviewData.level = level;
   reviewData.idx = 0;
   reviewData.correct = 0;
@@ -1003,6 +1027,8 @@ async function loadReviewQueue(level = 0) {
     showReviewCard(0);
   } catch (e) {
     document.getElementById('review-queue-display').innerHTML = `<p class="muted center">Lỗi: ${e.message}</p>`;
+  } finally {
+    isReviewLoading = false;
   }
 }
 
@@ -1090,8 +1116,8 @@ function endReviewSession() {
 }
 
 // ── SEARCH ──
-let searchTimer;
-async function doSearch(q) {
+// ✔️ Fix 2: Áp dụng debounce cho tìm kiếm từ điển
+const doSearch = debounce(async (q) => {
   if (!q.trim()) {
     document.getElementById('search-results').innerHTML = '<p class="muted center">Nhập từ khóa để tìm kiếm bằng chữ Hán, pinyin, tiếng Anh hoặc tiếng Việt.</p>';
     return;
@@ -1102,7 +1128,7 @@ async function doSearch(q) {
   } catch {
     document.getElementById('search-results').innerHTML = '<p class="muted center">Lỗi tìm kiếm.</p>';
   }
-}
+}, 400);
 
 // ── MODAL ──
 let currentWord = null;
@@ -1755,14 +1781,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // tabs
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', e => {
     e.preventDefault();
-    const v = t.dataset.view;
-    showView(v);
-    if (v === 'flashcard') initFC(+document.getElementById('fc-level').value);
-    if (v === 'quiz') resetQuizUI();
-    if (v === 'admin') loadAdmin();
-    if (v === 'saved') openSavedWords();
-    if (v === 'pronounce') loadPronounceLevel(+document.getElementById('pronounce-level').value);
-    if (v === 'review') loadReviewQueue(+document.getElementById('review-level').value);
+    showView(t.dataset.view);
   }));
 
   document.getElementById('logo-home')?.addEventListener('click', e => { e.preventDefault(); showView('home'); });
@@ -1855,8 +1874,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // search
   document.getElementById('search-input')?.addEventListener('input', e => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => doSearch(e.target.value), 350);
+    doSearch(e.target.value);
   });
 
   // modal & writer
@@ -1868,6 +1886,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('auth-back')?.addEventListener('click', closeAuth);
   document.getElementById('view-auth')?.addEventListener('click', e => { if (e.target.id === 'view-auth') closeAuth(); });
   document.getElementById('pronounce-back')?.addEventListener('click', () => showView('home'));
+  document.getElementById('match-back')?.addEventListener('click', () => showView('home'));
+  document.getElementById('listen-back')?.addEventListener('click', () => showView('home'));
   document.getElementById('pronounce-level')?.addEventListener('change', e => loadPronounceLevel(+e.target.value));
   document.getElementById('pronounce-sample')?.addEventListener('click', playPronounceSample);
   document.getElementById('pronounce-start-record')?.addEventListener('click', startPronounceRecording);
@@ -1968,6 +1988,27 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('qr-again')?.addEventListener('click', () => {
     document.getElementById('quiz-result').classList.add('hidden');
     document.getElementById('quiz-setup').classList.remove('hidden');
+  });
+
+  // match game
+  document.getElementById('match-start')?.addEventListener('click', startMatchGame);
+  document.getElementById('match-end')?.addEventListener('click', endMatchGame);
+  document.getElementById('match-again')?.addEventListener('click', () => {
+    // Simulate clicking the start button to restart with current settings
+    const startBtn = document.getElementById('match-start');
+    if (startBtn) {
+      startBtn.click();
+    }
+  });
+
+  // listen game
+  document.getElementById('listen-start')?.addEventListener('click', startListenGame);
+  document.getElementById('listen-play-audio')?.addEventListener('click', playListenAudio);
+  document.getElementById('listen-end')?.addEventListener('click', endListenGame);
+  document.getElementById('listen-again')?.addEventListener('click', () => {
+    document.getElementById('listen-result').classList.add('hidden');
+    document.getElementById('listen-play').classList.add('hidden');
+    document.querySelector('#view-listen .quiz-setup').classList.remove('hidden');
   });
 
   // typing
@@ -2087,3 +2128,639 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 });
+
+// ── MATCH GAME ──
+function initMatchGame() {
+  // This will be called when the page loads
+}
+
+async function startMatchGame() {
+  const level = +document.getElementById('match-level').value;
+  const mode = document.querySelector('input[name="match-mode"]:checked').value;
+  const source = document.getElementById('match-source').value;
+  
+  try {
+    let words = [];
+    if (source === 'saved') {
+      const res = await api('/api/saved_words');
+      // Normalize saved word format to match HSK word format
+      words = res.map(w => ({ 
+        simplified: w.word, 
+        pinyin: w.pinyin, 
+        vietnamese: w.meaning,
+        hsk: w.hsk_level 
+      }));
+    } else {
+      // Use random endpoint for diversity
+      words = await api(`/api/random?level=${level}&count=40`);
+    }
+    
+    if (!words || words.length < 6) {
+      alert(source === 'saved' ? 'Bạn cần lưu ít nhất 6 từ để chơi chế độ này.' : 'Không đủ dữ liệu từ vựng.');
+      return;
+    }
+    
+    // Create pairs (6 pairs = 12 items) - ensure unique words
+    const uniqueWords = [];
+    const seen = new Set();
+    for (const word of words) {
+      if (!seen.has(word.simplified) && uniqueWords.length < 6) {
+        uniqueWords.push(word);
+        seen.add(word.simplified);
+      }
+    }
+    
+    if (uniqueWords.length < 6) {
+      alert('Không đủ từ duy nhất để chơi game ghép.');
+      return;
+    }
+
+    // Reset game state
+    S.match = {
+      level: level,
+      mode: mode,
+      pairs: [],
+      score: 0,
+      combo: 0,
+      timeLeft: 60,
+      timer: null,
+      matched: new Set(),
+      selectedHanzi: null,
+      totalPairs: 6,
+      currentProgress: 0,
+      originalWords: uniqueWords // Store original words for wrong words display
+    };
+    
+    const selectedWords = uniqueWords;
+    const pairs = [];
+    
+    selectedWords.forEach(word => {
+      pairs.push({
+        id: word.simplified,
+        type: 'hanzi',
+        content: word.simplified,
+        matchId: word.simplified
+      });
+      pairs.push({
+        id: word.simplified + '_target',
+        type: 'target',
+        content: mode === 'meaning' ? word.vietnamese : word.pinyin,
+        matchId: word.simplified
+      });
+    });
+    
+    // Shuffle pairs
+    S.match.pairs = pairs.sort(() => Math.random() - 0.5);
+    
+    // Hide setup, show game
+    document.querySelector('#view-match .quiz-setup').classList.add('hidden');
+    document.getElementById('match-result').classList.add('hidden');
+    document.getElementById('match-play').classList.remove('hidden');
+    
+    // Update UI
+    const targetLabel = document.getElementById('match-target-label');
+    const scoreEl = document.getElementById('match-score');
+    const comboEl = document.getElementById('match-combo');
+    const progressEl = document.getElementById('match-progress');
+    const timerEl = document.getElementById('match-timer');
+    
+    if (targetLabel) targetLabel.textContent = mode === 'meaning' ? 'Nghĩa' : 'Pinyin';
+    if (scoreEl) scoreEl.textContent = '0';
+    if (comboEl) comboEl.textContent = '🔥 0';
+    if (progressEl) progressEl.textContent = '0 / 6';
+    if (timerEl) timerEl.textContent = '60s';
+    
+    renderMatchGame();
+    startMatchTimer();
+    
+  } catch (e) {
+    alert('Lỗi tải dữ liệu game: ' + e.message);
+  }
+}
+
+function renderMatchGame() {
+  const leftCol = document.getElementById('match-left');
+  const rightCol = document.getElementById('match-right');
+  
+  if (!leftCol || !rightCol) {
+    console.error('Match game columns not found');
+    return;
+  }
+  
+  // Clear columns and add headers
+  leftCol.innerHTML = '<h3 style="text-align:center; margin-bottom:15px; color:#374151;">📝 Chữ Hán</h3>';
+  rightCol.innerHTML = `<h3 style="text-align:center; margin-bottom:15px; color:#374151;">🎯 ${S.match.mode === 'meaning' ? 'Nghĩa' : 'Pinyin'}</h3>`;
+  
+  // Separate hanzi and targets from remaining pairs
+  const hanziItems = S.match.pairs.filter(p => p.type === 'hanzi');
+  const targetItems = S.match.pairs.filter(p => p.type === 'target');
+  
+  // Shuffle for display
+  const shuffledHanzi = hanziItems.sort(() => Math.random() - 0.5);
+  const shuffledTargets = targetItems.sort(() => Math.random() - 0.5);
+  
+  // Add clickable hanzi items
+  shuffledHanzi.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'match-item match-hanzi';
+    div.dataset.id = item.id;
+    div.dataset.matchId = item.matchId;
+    div.innerHTML = `<div style="font-size:1.5rem; font-weight:bold; color:var(--zh-color);">${item.content}</div>`;
+    div.addEventListener('click', () => selectHanziItem(div, item));
+    leftCol.appendChild(div);
+  });
+  
+  // Add clickable target items
+  shuffledTargets.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'match-item match-target';
+    div.dataset.id = item.id;
+    div.dataset.matchId = item.matchId;
+    div.innerHTML = `<div style="font-size:1.2rem; color:#374151;">${item.content}</div>`;
+    div.addEventListener('click', () => selectTargetItem(div, item));
+    rightCol.appendChild(div);
+  });
+}
+
+let draggedElement = null;
+
+function selectHanziItem(element, item) {
+  // Clear previous selection
+  document.querySelectorAll('.match-hanzi.selected').forEach(el => {
+    el.classList.remove('selected');
+  });
+  
+  // Select this item
+  element.classList.add('selected');
+  S.match.selectedHanzi = item;
+}
+
+function selectTargetItem(element, item) {
+  if (!S.match.selectedHanzi) {
+    // Show hint that user needs to select hanzi first
+    element.style.animation = 'shake 0.3s ease';
+    setTimeout(() => element.style.animation = '', 300);
+    return;
+  }
+  
+  const hanziItem = S.match.selectedHanzi;
+  const isCorrect = hanziItem.matchId === item.matchId;
+  
+  // Clear selection
+  document.querySelectorAll('.match-hanzi.selected').forEach(el => {
+    el.classList.remove('selected');
+  });
+  
+  if (isCorrect) {
+    // Correct match
+    S.match.score += 10 + (S.match.combo * 5);
+    S.match.combo += 1;
+    S.match.matched.add(hanziItem.matchId);
+    S.match.currentProgress++;
+    
+    // Update SRS progress
+    updateWordProgress(hanziItem.matchId, S.match.level, true);
+    
+    // Update UI
+    document.getElementById('match-score').textContent = S.match.score;
+    document.getElementById('match-combo').textContent = `🔥 ${S.match.combo}`;
+    document.getElementById('match-progress').textContent = `${S.match.currentProgress} / ${S.match.totalPairs}`;
+    
+    // Visual feedback
+    const hanziElement = document.querySelector(`[data-match-id="${hanziItem.matchId}"].match-hanzi`);
+    const targetElement = element;
+    
+    hanziElement.classList.add('correct');
+    targetElement.classList.add('correct');
+    
+    setTimeout(() => {
+      hanziElement.classList.add('fade-out');
+      targetElement.classList.add('fade-out');
+      
+      // Remove matched items from pairs array
+      S.match.pairs = S.match.pairs.filter(p => p.matchId !== hanziItem.matchId);
+      
+      // Check if round is complete
+      if (S.match.currentProgress >= S.match.totalPairs) {
+        // Start next round or end game
+        setTimeout(() => nextMatchRound(), 1000);
+      } else {
+        // Re-render remaining items
+        setTimeout(renderMatchGame, 600);
+      }
+    }, 600);
+    
+  } else {
+    // Wrong match
+    S.match.combo = 0;
+    document.getElementById('match-combo').textContent = '🔥 0';
+    
+    // Update SRS progress for wrong answer
+    updateWordProgress(hanziItem.matchId, S.match.level, false);
+    
+    // Visual feedback
+    const hanziElement = document.querySelector(`[data-match-id="${hanziItem.matchId}"].match-hanzi`);
+    hanziElement.classList.add('incorrect');
+    element.classList.add('incorrect');
+    
+    setTimeout(() => {
+      hanziElement.classList.remove('incorrect');
+      element.classList.remove('incorrect');
+    }, 500);
+  }
+  
+  S.match.selectedHanzi = null;
+}
+
+function nextMatchRound() {
+  S.match.currentProgress = 0;
+  // For now, just end the game. Could add more rounds later
+  endMatchGame();
+}
+
+function startMatchTimer() {
+  S.match.timer = setInterval(() => {
+    S.match.timeLeft--;
+    const timerElement = document.getElementById('match-timer');
+    if (timerElement) {
+      timerElement.textContent = `${S.match.timeLeft}s`;
+      
+      // Change color when time is low
+      if (S.match.timeLeft <= 10) {
+        timerElement.style.color = 'var(--error)';
+        timerElement.style.fontWeight = 'bold';
+      } else {
+        timerElement.style.color = 'var(--text)';
+        timerElement.style.fontWeight = 'normal';
+      }
+    }
+    
+    if (S.match.timeLeft <= 0) {
+      endMatchGame();
+    }
+  }, 1000);
+}
+
+function endMatchGame() {
+  if (S.match.timer) {
+    clearInterval(S.match.timer);
+    S.match.timer = null;
+  }
+  
+  document.getElementById('match-play').classList.add('hidden');
+  document.getElementById('match-result').classList.remove('hidden');
+  
+  const finalScore = S.match.score + (S.match.timeLeft * 2); // Bonus for remaining time
+  document.getElementById('match-final-score').textContent = `${finalScore} điểm`;
+  document.getElementById('match-detail').textContent = `Ghép đúng: ${S.match.currentProgress}/${S.match.totalPairs} | Combo cao nhất: ${S.match.combo} | Thời gian còn lại: ${S.match.timeLeft}s`;
+  
+  // Show wrong words for review
+  const wrongWords = S.match.originalWords.filter(word => !S.match.matched.has(word.simplified));
+  if (wrongWords.length > 0) {
+    const wrongWordsHtml = wrongWords.map(word => 
+      `<div class="wrong-word-item">
+        <span class="wrong-hanzi">${word.simplified}</span> → <span class="wrong-meaning">${S.match.mode === 'meaning' ? word.vietnamese : word.pinyin}</span>
+        <button onclick="reviewWord('${word.simplified}')" class="review-btn">🔄 Ôn lại</button>
+      </div>`
+    ).join('');
+    
+    document.getElementById('match-wrong-words').innerHTML = `
+      <h4>📚 Từ cần ôn lại:</h4>
+      ${wrongWordsHtml}
+    `;
+    document.getElementById('match-wrong-words').classList.remove('hidden');
+  } else {
+    document.getElementById('match-wrong-words').classList.add('hidden');
+  }
+}
+
+// ── LISTEN GAME ──
+async function startListenGame() {
+  const level = +document.getElementById('listen-level').value;
+  const source = document.getElementById('listen-source').value;
+  
+  try {
+    let words = [];
+    if (source === 'saved') {
+      const res = await api('/api/saved_words');
+      words = res.map(w => ({ 
+        simplified: w.word, 
+        pinyin: w.pinyin, 
+        vietnamese: w.meaning,
+        hsk: w.hsk_level 
+      }));
+      // Shuffle saved words for randomness
+      words = words.sort(() => Math.random() - 0.5);
+    } else {
+      // Get diverse random words from HSK level
+      words = await api(`/api/random?level=${level}&count=30`);
+    }
+    
+    if (!words || words.length < 4) {
+      alert(source === 'saved' ? 'Bạn cần lưu ít nhất 4 từ để chơi chế độ này.' : 'Không đủ dữ liệu.');
+      return;
+    }
+    
+    // Reset game state
+    const shuffledPool = words.sort(() => Math.random() - 0.5);
+    S.listen = {
+      level: level,
+      pool: shuffledPool, // Lưu toàn bộ kho từ để lấy đáp án sai phong phú hơn
+      qs: shuffledPool.slice(0, Math.min(10, shuffledPool.length)), // 10 câu hỏi
+      cur: 0,
+      right: 0,
+      wrong: 0,
+      total: Math.min(10, shuffledPool.length),
+      timer: null,
+      timeLeft: 10,
+      currentAudio: null
+    };
+    
+    // Hide setup, show game
+    document.querySelector('#view-listen .quiz-setup').classList.add('hidden');
+    document.getElementById('listen-result').classList.add('hidden');
+    document.getElementById('listen-play').classList.remove('hidden');
+    
+    renderListenQuestion();
+    
+  } catch (e) {
+    alert('Lỗi tải dữ liệu game: ' + e.message);
+  }
+}
+
+function renderListenQuestion() {
+  const q = S.listen.qs[S.listen.cur];
+  if (!q) return;
+  
+  // Reset timer
+  S.listen.timeLeft = 10;
+  document.getElementById('listen-timer').textContent = '10';
+  
+  // Clear previous timer
+  if (S.listen.timer) {
+    clearInterval(S.listen.timer);
+  }
+  
+  // Start countdown
+  S.listen.timer = setInterval(() => {
+    S.listen.timeLeft--;
+    document.getElementById('listen-timer').textContent = S.listen.timeLeft;
+    
+    if (S.listen.timeLeft <= 0) {
+      // Time's up - count as wrong
+      S.listen.wrong++;
+      nextListenQuestion();
+    }
+  }, 1000);
+  
+  // Generate options (1 correct + 3 wrong)
+  const correctOption = q;
+  // Lấy 3 đáp án sai từ toàn bộ pool (kho 30-40 từ) thay vì chỉ trong 10 câu hỏi
+  const wrongOptions = S.listen.pool
+    .filter(w => w.simplified !== q.simplified)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 3);
+    
+  const options = [correctOption, ...wrongOptions].sort(() => Math.random() - 0.5);
+  
+  const optionsContainer = document.getElementById('listen-options');
+  optionsContainer.innerHTML = '';
+  
+  options.forEach((option, index) => {
+    const button = document.createElement('button');
+    button.className = 'listen-option btn-main';
+    button.dataset.correct = option.simplified === q.simplified;
+    button.innerHTML = `
+      <div style="font-size:1.2rem; font-weight:bold; color:var(--zh-color); margin-bottom:5px;">${option.simplified}</div>
+      <div style="font-size:0.9rem; color:#64748b;">${option.pinyin}</div>
+      <div style="font-size:0.9rem; color:#374151;">${option.vietnamese}</div>
+    `;
+    button.addEventListener('click', () => selectListenOption(button, option.simplified === q.simplified));
+    optionsContainer.appendChild(button);
+  });
+  
+  // Store current question for audio
+  S.listen.currentAudio = q;
+}
+
+function playListenAudio() {
+  if (S.listen.currentAudio) {
+    playAudio(S.listen.currentAudio.simplified);
+  }
+}
+
+function selectListenOption(button, isCorrect) {
+  // Clear timer
+  if (S.listen.timer) {
+    clearInterval(S.listen.timer);
+    S.listen.timer = null;
+  }
+  
+  // Disable all options and show correct/incorrect colors
+  document.querySelectorAll('.listen-option').forEach(btn => {
+    btn.disabled = true;
+    const isThisCorrect = btn.dataset.correct === 'true';
+    
+    if (isThisCorrect) {
+      // Đáp án đúng luôn hiện xanh
+      btn.style.background = 'var(--success)';
+      btn.style.border = '2px solid var(--green)';
+    } else if (btn === button && !isCorrect) {
+      // Đáp án sai được chọn hiện đỏ
+      btn.style.background = 'var(--error)';
+      btn.style.border = '2px solid var(--red)';
+    }
+  });
+  
+  // Update score
+  if (isCorrect) {
+    S.listen.right++;
+    // Update SRS progress
+    updateWordProgress(S.listen.currentAudio.simplified, S.listen.level, true);
+  } else {
+    S.listen.wrong++;
+    // Update SRS progress
+    updateWordProgress(S.listen.currentAudio.simplified, S.listen.level, false);
+  }
+  
+  // Wait 2 seconds then next question
+  setTimeout(nextListenQuestion, 2000);
+}
+
+function nextListenQuestion() {
+  S.listen.cur++;
+  
+  if (S.listen.cur >= S.listen.total) {
+    endListenGame();
+  } else {
+    renderListenQuestion();
+  }
+}
+
+function endListenGame() {
+  if (S.listen.timer) {
+    clearInterval(S.listen.timer);
+    S.listen.timer = null;
+  }
+  
+  document.getElementById('listen-play').classList.add('hidden');
+  document.getElementById('listen-result').classList.remove('hidden');
+  
+  const score = `${S.listen.right}/${S.listen.total}`;
+  document.getElementById('listen-final-score').textContent = score;
+  document.getElementById('listen-detail').textContent = `Đúng: ${S.listen.right} | Sai: ${S.listen.wrong}`;
+}
+
+// ── SRS INTEGRATION ──
+async function updateWordProgress(word, level, isCorrect) {
+  try {
+    await api('/api/progress', {
+      method: 'POST',
+      body: JSON.stringify({
+        word: word,
+        hsk_level: level,
+        is_correct: isCorrect
+      })
+    });
+  } catch (e) {
+    // Silently fail if not logged in or API error
+    console.log('Progress update failed:', e.message);
+  }
+}
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+  }
+  
+  .match-item {
+    padding: 20px;
+    margin: 12px 0;
+    border: 3px solid #e5e7eb;
+    border-radius: 16px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+    min-height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .match-item:hover {
+    border-color: var(--primary);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    transform: translateY(-2px);
+  }
+  
+  .match-item.selected {
+    border-color: var(--primary);
+    background: var(--accent-light);
+    box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+  }
+  
+  .match-item.correct {
+    border-color: var(--success);
+    background: var(--green-bg);
+    animation: correctPulse 0.6s ease;
+  }
+  
+  .match-item.incorrect {
+    border-color: var(--error);
+    background: var(--red-bg);
+    animation: shake 0.5s ease;
+  }
+  
+  .match-item.fade-out {
+    opacity: 0.3;
+    pointer-events: none;
+    transform: scale(0.95);
+  }
+  
+  .match-hanzi {
+    cursor: pointer;
+  }
+  
+  .match-target {
+    min-height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  @keyframes correctPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+  
+  .listen-option {
+    padding: 20px;
+    border-radius: 12px;
+    border: none;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  
+  .listen-option:hover {
+    background: #e2e8f0;
+  }
+  
+  .listen-option:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+  
+  .wrong-word-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px;
+    margin: 8px 0;
+    background: var(--red-bg);
+    border: 1px solid var(--error);
+    border-radius: 8px;
+  }
+  
+  .wrong-hanzi {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: var(--zh-color);
+  }
+  
+  .wrong-meaning {
+    color: #374151;
+  }
+  
+  .review-btn {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+  
+  .review-btn:hover {
+    background: #1d4ed8;
+    transform: scale(1.05);
+  }
+`;
+
+function reviewWord(wordId) {
+  // For now, just show a toast message. Could implement more sophisticated review later
+  showToast(`Đang ôn lại từ: ${wordId}`, 'info');
+  // Could add to a review queue or start a focused practice session
+}
+
+document.head.appendChild(style);
