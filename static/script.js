@@ -694,8 +694,9 @@ async function api(path, options = {}) {
   if (options.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
   const r = await fetch(API + path, { ...options, headers });
   if (!r.ok) {
-    if (r.status === 401) {
-      // Clear session on auth errors
+    if (r.status === 401 && !path.startsWith('/api/auth/')) {
+      // Session hết hạn – chỉ áp dụng với các API yêu cầu xác thực,
+      // KHÔNG áp dụng cho chính endpoint login/register (tránh lỗi nhầm)
       if (authManager) {
         authManager.saveSession('', null);
       }
