@@ -91,3 +91,29 @@ class ContextExample(Base):
     pinyin = Column(String)
     vi_meaning = Column(String)
     audio_url = Column(String, nullable=True)
+
+# ── STATIC DATA (MIGRATED FROM JSON/TXT) ──
+
+class DictionaryEntry(Base):
+    __tablename__ = "dictionary_entries"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    traditional = Column(String, index=True)
+    simplified = Column(String, index=True)
+    pinyin = Column(String, index=True)
+    english = Column(String)  # JSON string
+
+class HSKWord(Base):
+    __tablename__ = "hsk_words"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    word = Column(String, index=True)  # simplified
+    level = Column(Integer, index=True)
+
+class TranslationCache(Base):
+    __tablename__ = "translations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    word = Column(String, unique=True, index=True)
+    vietnamese = Column(String)
+

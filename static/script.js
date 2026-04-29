@@ -949,6 +949,7 @@ function renderWordList(words, containerId, isSavedView = false) {
         <div class="wi-actions">
            ${isSavedView ? `<button class="btn-ghost-sm" style="color:var(--red)" title="Xóa" onclick="event.stopPropagation(); deleteSavedWord(${w.id})">🗑️</button>` : ''}
            <button class="btn-audio-sm" title="Nghe phát âm" onclick="event.stopPropagation(); playAudio('${w.simplified}')">🔊</button>
+
            <button class="btn-audio-sm slow" title="Nghe chậm" onclick="event.stopPropagation(); playAudio('${w.simplified}', true)">🐌</button>
         </div>
       </div>`;
@@ -1934,7 +1935,26 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('auth-back')?.addEventListener('click', closeAuth);
   document.getElementById('view-auth')?.addEventListener('click', e => { if (e.target.id === 'view-auth') closeAuth(); });
   document.getElementById('pronounce-back')?.addEventListener('click', () => showView('home'));
-  document.getElementById('match-back')?.addEventListener('click', () => showView('home'));
+  document.getElementById('match-back')?.addEventListener('click', () => {
+    const playArea = document.getElementById('match-play');
+    const resultArea = document.getElementById('match-result');
+    const setupArea = document.getElementById('match-setup');
+    
+    if (!playArea.classList.contains('hidden') || !resultArea.classList.contains('hidden')) {
+      // Nếu đang chơi hoặc đang xem kết quả, quay về màn hình setup của game
+      playArea.classList.add('hidden');
+      resultArea.classList.add('hidden');
+      setupArea.classList.remove('hidden');
+      if (S.match.timer) {
+        clearInterval(S.match.timer);
+        S.match.timer = null;
+      }
+    } else {
+      // Nếu đang ở màn hình setup, quay về trang chủ
+      showView('home');
+    }
+  });
+
   document.getElementById('listen-back')?.addEventListener('click', () => showView('home'));
   document.getElementById('pronounce-level')?.addEventListener('change', e => loadPronounceLevel(+e.target.value));
   document.getElementById('pronounce-sample')?.addEventListener('click', playPronounceSample);
@@ -2042,12 +2062,21 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('match-start')?.addEventListener('click', startMatchGame);
   document.getElementById('match-end')?.addEventListener('click', endMatchGame);
   document.getElementById('match-again')?.addEventListener('click', () => {
-    // Simulate clicking the start button to restart with current settings
-    const startBtn = document.getElementById('match-start');
-    if (startBtn) {
-      startBtn.click();
-    }
+    // Restart game immediately
+    startMatchGame();
   });
+  document.getElementById('match-exit')?.addEventListener('click', () => {
+    document.getElementById('match-result').classList.add('hidden');
+    document.getElementById('match-setup').classList.remove('hidden');
+  });
+  document.getElementById('match-cancel')?.addEventListener('click', () => {
+    if (S.match.timer) clearInterval(S.match.timer);
+    document.getElementById('match-play').classList.add('hidden');
+    document.getElementById('match-setup').classList.remove('hidden');
+  });
+
+
+
 
   // listen game
   document.getElementById('listen-start')?.addEventListener('click', startListenGame);
@@ -2248,7 +2277,8 @@ async function startMatchGame() {
     S.match.pairs = pairs.sort(() => Math.random() - 0.5);
     
     // Hide setup, show game
-    document.querySelector('#view-match .quiz-setup').classList.add('hidden');
+    document.getElementById('match-setup').classList.add('hidden');
+
     document.getElementById('match-result').classList.add('hidden');
     document.getElementById('match-play').classList.remove('hidden');
     
@@ -2357,9 +2387,11 @@ function selectTargetItem(element, item) {
     updateWordProgress(hanziItem.matchId, S.match.level, true);
     
     // Update UI
-    document.getElementById('match-score').textContent = S.match.score;
+    const scorePercent = Math.round((S.match.matched.size / S.match.totalPairs) * 100);
+    document.getElementById('match-score').textContent = `${scorePercent}%`;
     document.getElementById('match-combo').textContent = `🔥 ${S.match.combo}`;
     document.getElementById('match-progress').textContent = `${S.match.currentProgress} / ${S.match.totalPairs}`;
+
     
     // Visual feedback
     const hanziElement = document.querySelector(`[data-match-id="${hanziItem.matchId}"].match-hanzi`);
@@ -2445,9 +2477,12 @@ function endMatchGame() {
   document.getElementById('match-play').classList.add('hidden');
   document.getElementById('match-result').classList.remove('hidden');
   
-  const finalScore = S.match.score + (S.match.timeLeft * 2); // Bonus for remaining time
-  document.getElementById('match-final-score').textContent = `${finalScore} điểm`;
-  document.getElementById('match-detail').textContent = `Ghép đúng: ${S.match.currentProgress}/${S.match.totalPairs} | Combo cao nhất: ${S.match.combo} | Thời gian còn lại: ${S.match.timeLeft}s`;
+  // Calculate score 0-100
+  const scorePercent = Math.round((S.match.matched.size / S.match.totalPairs) * 100);
+  
+  document.getElementById('match-final-score').textContent = `${scorePercent}%`;
+  document.getElementById('match-detail').textContent = `Ghép đúng: ${S.match.matched.size}/${S.match.totalPairs} | Combo cao nhất: ${S.match.combo} | Thời gian còn lại: ${S.match.timeLeft}s`;
+
   
   // Show wrong words for review
   const wrongWords = S.match.originalWords.filter(word => !S.match.matched.has(word.simplified));

@@ -219,7 +219,8 @@
         </select>
       </div>
 
-      <div class="quiz-setup" style="margin-bottom:18px;">
+      <div id="match-setup" class="quiz-setup" style="margin-bottom:18px;">
+
         <div style="margin-bottom: 10px;">
           <label style="font-weight: 600;">Nguồn từ:</label>
           <select id="match-source" class="sel">
@@ -274,15 +275,20 @@
 
         <div style="text-align:center; margin-top:20px;">
           <button class="btn-ghost" id="match-end">⏹ Kết thúc</button>
+          <button class="btn-ghost" id="match-cancel" style="margin-left: 10px;">Quay lại setup</button>
         </div>
+
       </div>
 
       <div id="match-result" class="hidden quiz-result">
         <h3>🎉 Kết quả ghép từ</h3>
-        <div class="qr-score" id="match-final-score">0 điểm</div>
+        <div class="qr-score" id="match-final-score">0%</div>
+
         <p class="muted" id="match-detail">Chi tiết kết quả sẽ hiển thị ở đây</p>
         <div id="match-wrong-words" class="hidden"></div>
         <button class="btn-main" id="match-again">Chơi lại</button>
+        <button class="btn-ghost" id="match-exit" style="margin-left: 10px;">Quay lại setup</button>
+
       </div>
     </div>
 

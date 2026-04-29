@@ -60,6 +60,11 @@ class SavedWordPayload(BaseModel):
     hsk_level: int = 0
 
 
+class BatchSavedWordsPayload(BaseModel):
+    words: list[SavedWordPayload]
+
+
+
 def user_to_dict(user: models.User) -> dict:
     return {
         "id": user.id,
@@ -101,6 +106,10 @@ def ensure_schema_columns():
                 conn.execute(text("ALTER TABLE user_progress ADD COLUMN next_review TIMESTAMP"))
             if "hsk_level" not in cols:
                 conn.execute(text("ALTER TABLE user_progress ADD COLUMN hsk_level INTEGER DEFAULT 0"))
+            if "correct_count" not in cols:
+                conn.execute(text("ALTER TABLE user_progress ADD COLUMN correct_count INTEGER DEFAULT 0"))
+            if "wrong_count" not in cols:
+                conn.execute(text("ALTER TABLE user_progress ADD COLUMN wrong_count INTEGER DEFAULT 0"))
 
         # 4. Kiểm tra bảng user_sentences (Cho luyện nói cá nhân)
         if "user_sentences" in tables:
@@ -217,8 +226,15 @@ async def security_checks(request: Request, call_next):
     return response
 
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+# Tự động dò tìm thư mục static để tương thích cả Local và Railway
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_parent_dir = os.path.dirname(_current_dir)
+
+if os.path.exists(os.path.join(_parent_dir, "static")):
+    STATIC_DIR = os.path.join(_parent_dir, "static")
+else:
+    # Fallback cho trường hợp Railway deploy bị lệch path
+    STATIC_DIR = os.path.join(_current_dir, "static")
 
 # ✅ Serve frontend tại route "/"
 @app.get("/")
@@ -439,7 +455,9 @@ def get_hsk_words(
 
 
 @app.post("/api/saved_words")
+@limiter.limit("30/minute")
 def save_word(
+    request: Request,
     payload: SavedWordPayload,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
@@ -461,6 +479,50 @@ def save_word(
     db.add(new_word)
     db.commit()
     return {"msg": "Saved", "status": "success"}
+
+
+@app.post("/api/saved_words/batch")
+@limiter.limit("10/minute")
+def save_words_batch(
+    request: Request,
+    payload: BatchSavedWordsPayload,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Lưu nhiều từ cùng lúc để giảm số lượng request và lag."""
+    saved_count = 0
+    skipped_count = 0
+    
+    for item in payload.words:
+        existing = db.query(models.SavedWord).filter(
+            models.SavedWord.user_id == user.id,
+            models.SavedWord.word == item.word,
+        ).first()
+        
+        if existing:
+            skipped_count += 1
+            continue
+            
+        new_word = models.SavedWord(
+            user_id=user.id,
+            word=item.word,
+            pinyin=item.pinyin,
+            meaning=item.meaning,
+            hsk_level=item.hsk_level,
+        )
+        db.add(new_word)
+        saved_count += 1
+        
+    if saved_count > 0:
+        db.commit()
+        
+    return {
+        "msg": f"Processed {len(payload.words)} words",
+        "saved": saved_count,
+        "skipped": skipped_count,
+        "status": "success"
+    }
+
 
 
 @app.get("/api/saved_words")
@@ -764,11 +826,11 @@ def update_progress(payload: ProgressUpdate, user: models.User = Depends(get_cur
     
     # Update counts and SRS interval
     if payload.is_correct:
-        prog.correct_count += 1
+        prog.correct_count = (prog.correct_count or 0) + 1
         # Logic: Đúng -> 3 -> 7 -> 30 ngày (cấp độ 1, 2, 3)
         prog.interval_level = min(3, prog.interval_level + 1)
     else:
-        prog.wrong_count += 1
+        prog.wrong_count = (prog.wrong_count or 0) + 1
         # Logic: Sai -> 1 ngày (reset về cấp độ 0)
         prog.interval_level = 0
     

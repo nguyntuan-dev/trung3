@@ -22,7 +22,20 @@ if DATABASE_URL.startswith("postgres://"):
 def _make_engine(url: str):
     """Tạo engine, SQLite cần connect_args riêng."""
     ca = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=ca)
+    engine = create_engine(url, connect_args=ca)
+    
+    # Enable WAL mode for SQLite to prevent locking lag
+    if url.startswith("sqlite"):
+        from sqlalchemy import event
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+            
+    return engine
+
 
 
 # Thử kết nối Postgres; nếu lỗi → fallback SQLite
