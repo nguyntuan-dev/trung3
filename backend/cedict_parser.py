@@ -48,6 +48,7 @@ class CedictDict:
 
     def __init__(self):
         self._loaded = False
+        self._bootstrap_seed_path = Path(__file__).resolve().parent.parent / "data" / "hsk_bootstrap.json"
 
     def load(self):
         """Initial check to ensure database is ready."""
@@ -60,6 +61,9 @@ class CedictDict:
         This keeps Railway/Postgres deployments usable even when the old SQLite
         file is not present.
         """
+        if self._bootstrap_seed_path.exists():
+            return self._bootstrap_from_seed_file()
+
         db = self._get_db()
         added_hsk = 0
         added_translations = 0
@@ -95,6 +99,67 @@ class CedictDict:
 
             return {
                 "hsk_words_added": added_hsk,
+                "translations_added": added_translations,
+            }
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def _bootstrap_from_seed_file(self) -> dict[str, int]:
+        db = self._get_db()
+        added_hsk = 0
+        added_translations = 0
+        added_entries = 0
+        try:
+            seed_rows = json.loads(self._bootstrap_seed_path.read_text(encoding="utf-8"))
+            existing_hsk = {
+                (word, level)
+                for word, level in db.query(models.HSKWord.word, models.HSKWord.level).all()
+            }
+            existing_translations = {
+                word
+                for (word,) in db.query(models.TranslationCache.word).all()
+            }
+            existing_entries = {
+                simplified
+                for (simplified,) in db.query(models.DictionaryEntry.simplified).all()
+            }
+
+            for row in seed_rows:
+                word = row["word"]
+                level = int(row["level"])
+                hsk_key = (word, level)
+                if hsk_key not in existing_hsk:
+                    db.add(models.HSKWord(word=word, level=level))
+                    existing_hsk.add(hsk_key)
+                    added_hsk += 1
+
+                if word not in existing_entries:
+                    db.add(
+                        models.DictionaryEntry(
+                            traditional=row.get("traditional") or word,
+                            simplified=row.get("simplified") or word,
+                            pinyin=row.get("pinyin", ""),
+                            english=json.dumps(row.get("english", []), ensure_ascii=False),
+                        )
+                    )
+                    existing_entries.add(word)
+                    added_entries += 1
+
+                meaning = row.get("vietnamese") or VI.get(word, "")
+                if meaning and word not in existing_translations:
+                    db.add(models.TranslationCache(word=word, vietnamese=meaning))
+                    existing_translations.add(word)
+                    added_translations += 1
+
+            if added_hsk or added_entries or added_translations:
+                db.commit()
+
+            return {
+                "hsk_words_added": added_hsk,
+                "dictionary_entries_added": added_entries,
                 "translations_added": added_translations,
             }
         except Exception:
