@@ -127,11 +127,13 @@ async def lifespan(app: FastAPI):
     try:
         models.Base.metadata.create_all(bind=engine)
         ensure_schema_columns()
+        bootstrap_result = cedict.bootstrap_static_data()
         db = next(get_db())
         try:
             ensure_admin_user(db)
         finally:
             db.close()
+        print(f"SUCCESS: Static bootstrap ready {bootstrap_result}")
         print("SUCCESS: Database tables ready")
     except Exception as e:
         print(f"ERROR: Table creation failed: {e}")
@@ -623,8 +625,8 @@ def update_hsk_database(background_tasks: BackgroundTasks):
     success = cedict.download_hsk_data(preload=False)
     if success:
         # Chạy việc dịch nghĩa ở background để không làm treo UI
-        background_tasks.add_task(cedict.preload_hsk_words, cedict.hsk_words)
-        return {"msg": "HSK database updated. Translation processing in background.", "status": "success"}
+        background_tasks.add_task(cedict.preload_hsk_words)
+        return {"msg": "HSK and Vietnamese cache rebuilt from bundled data.", "status": "success"}
     else:
         return {"msg": "Update failed", "status": "error"}
 

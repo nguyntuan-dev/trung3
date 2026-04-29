@@ -16,10 +16,12 @@ try:
     from database import engine
     import models
     from vietnamese import get_translation
+    from viet_dict import VI, get_hsk_words_by_level
 except ImportError:
     from .database import engine
     from . import models
     from .vietnamese import get_translation
+    from .viet_dict import VI, get_hsk_words_by_level
 
 class CedictEntry:
     """DTO for dictionary entries."""
@@ -51,6 +53,89 @@ class CedictDict:
         """Initial check to ensure database is ready."""
         # Database should already be initialized by main.py
         self._loaded = True
+
+    def bootstrap_static_data(self) -> dict[str, int]:
+        """
+        Seed HSK and Vietnamese cache data from the bundled static dictionary.
+        This keeps Railway/Postgres deployments usable even when the old SQLite
+        file is not present.
+        """
+        db = self._get_db()
+        added_hsk = 0
+        added_translations = 0
+        try:
+            hsk_words_by_level = get_hsk_words_by_level()
+
+            existing_hsk = {
+                (word, level)
+                for word, level in db.query(models.HSKWord.word, models.HSKWord.level).all()
+            }
+            for level, words in hsk_words_by_level.items():
+                for word in words:
+                    key = (word, level)
+                    if key in existing_hsk:
+                        continue
+                    db.add(models.HSKWord(word=word, level=level))
+                    existing_hsk.add(key)
+                    added_hsk += 1
+
+            existing_translations = {
+                word
+                for (word,) in db.query(models.TranslationCache.word).all()
+            }
+            for word, meaning in VI.items():
+                if word in existing_translations:
+                    continue
+                db.add(models.TranslationCache(word=word, vietnamese=meaning))
+                existing_translations.add(word)
+                added_translations += 1
+
+            if added_hsk or added_translations:
+                db.commit()
+
+            return {
+                "hsk_words_added": added_hsk,
+                "translations_added": added_translations,
+            }
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def download_hsk_data(self, preload: bool = False) -> bool:
+        """
+        Keep the existing update endpoint alive by rebuilding static HSK data
+        from the bundled dictionary instead of relying on removed download code.
+        """
+        self.bootstrap_static_data()
+        return True
+
+    def preload_hsk_words(self, hsk_words: dict[int, list[str]] | None = None):
+        if hsk_words is None:
+            hsk_words = get_hsk_words_by_level()
+        db = self._get_db()
+        try:
+            existing = {
+                word
+                for (word,) in db.query(models.TranslationCache.word).all()
+            }
+            added = 0
+            for words in hsk_words.values():
+                for word in words:
+                    meaning = VI.get(word)
+                    if not meaning or word in existing:
+                        continue
+                    db.add(models.TranslationCache(word=word, vietnamese=meaning))
+                    existing.add(word)
+                    added += 1
+            if added:
+                db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     def _get_db(self):
         return Session(engine)

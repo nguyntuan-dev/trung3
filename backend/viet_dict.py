@@ -3,6 +3,11 @@ Bảng dịch Trung – Việt cho từ vựng HSK 1-6.
 Key = chữ giản thể, Value = nghĩa tiếng Việt.
 """
 
+from __future__ import annotations
+
+import re
+from functools import lru_cache
+
 VI = {
     # ═══════════════ HSK 1 ═══════════════
     "爱": "yêu, thương",
@@ -895,3 +900,40 @@ VI = {
     "尝试": "thử, cố gắng",
     "常务": "thường vụ, thường trực",
 }
+
+
+@lru_cache(maxsize=1)
+def get_hsk_word_levels() -> dict[str, int]:
+    """
+    Parse this source file to recover the HSK level for each word from section comments.
+    This keeps the static dictionary as the single source of truth for bootstrap seeding.
+    """
+    level_map: dict[str, int] = {}
+    current_level = 0
+    path = __file__
+    header_re = re.compile(r"HSK\s+([1-6])")
+    word_re = re.compile(r'^\s*"([^"]+)"\s*:')
+
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            header_match = header_re.search(line)
+            if header_match:
+                current_level = int(header_match.group(1))
+                continue
+
+            if current_level == 0:
+                continue
+
+            word_match = word_re.match(line)
+            if word_match:
+                level_map[word_match.group(1)] = current_level
+
+    return level_map
+
+
+@lru_cache(maxsize=1)
+def get_hsk_words_by_level() -> dict[int, list[str]]:
+    by_level: dict[int, list[str]] = {level: [] for level in range(1, 7)}
+    for word, level in get_hsk_word_levels().items():
+        by_level.setdefault(level, []).append(word)
+    return by_level

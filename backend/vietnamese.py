@@ -14,9 +14,11 @@ from sqlalchemy import or_
 try:
     from database import engine
     import models
+    from viet_dict import VI
 except ImportError:
     from .database import engine
     from . import models
+    from .viet_dict import VI
 
 _translator = None
 
@@ -33,7 +35,9 @@ def get_translation(word: str) -> str:
     db = Session(engine)
     try:
         row = db.query(models.TranslationCache).filter_by(word=word).first()
-        return row.vietnamese if row else ""
+        if row and row.vietnamese:
+            return row.vietnamese
+        return VI.get(word, "")
     finally:
         db.close()
 
@@ -42,6 +46,17 @@ def translate_word(word: str) -> str:
     existing = get_translation(word)
     if existing:
         return existing
+
+    if word in VI:
+        db = Session(engine)
+        try:
+            db.add(models.TranslationCache(word=word, vietnamese=VI[word]))
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+        return VI[word]
 
     try:
         t = _get_translator()
@@ -73,6 +88,10 @@ def translate_batch(words: list[str]) -> dict[str, str]:
     
     try:
         for w in words:
+            if w in VI:
+                results[w] = VI[w]
+                continue
+
             row = db.query(models.TranslationCache).filter_by(word=w).first()
             if row:
                 results[w] = row.vietnamese
