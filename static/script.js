@@ -462,7 +462,7 @@ class AuthManager {
       authTab.textContent = this.user ? this.user.username : 'Đăng nhập';
       authTab.classList.toggle('hidden', this.user && !isAdminRoute);
     }
-    if (nav) nav.classList.toggle('hidden', !this.user);
+    if (nav) nav.classList.toggle('hidden', false);
     if (adminTab) adminTab.classList.toggle('hidden', !this.user?.is_admin);
     if (authTab) authTab.classList.toggle('hidden', isAdminRoute);
     document.getElementById('auth-logout')?.classList.toggle('hidden', !this.user);
@@ -761,7 +761,7 @@ async function renderHome() {
       return S.learned[w];
     }).length;
     return `
-      <div class="hsk-card" data-level="${h.level}">
+      <div class="hsk-card" data-level="${h.level}" onclick="openLearn(${h.level}, 0)">
         <div class="hsk-label" style="color:${h.color}">${h.name}</div>
         <div class="hsk-desc">${h.desc}</div>
         <div class="hsk-count">${info.total} từ</div>
@@ -907,6 +907,10 @@ async function openLearn(level, page) {
   if (isLearnLoading) return;
   isLearnLoading = true;
 
+  if (S.view !== 'learn') {
+    showView('learn');
+  }
+
   S.level = level;
   S.learnPage = page;
   const offset = page * S.learnPerPage;
@@ -928,6 +932,8 @@ async function openLearn(level, page) {
     isLearnLoading = false;
   }
 }
+
+window.openLearn = openLearn;
 
 function renderWordList(words, containerId, isSavedView = false) {
   const el = document.getElementById(containerId);
@@ -997,7 +1003,7 @@ function showView(viewName) {
   if (S.view === viewName && viewName !== 'auth') return;
 
   // Kiểm tra quyền truy cập (Auth Check)
-  if (viewName !== 'auth' && !authManager.user && !['home', 'search', 'pronounce'].includes(viewName)) {
+  if (viewName !== 'auth' && !authManager.user && !['home', 'search', 'pronounce', 'learn'].includes(viewName)) {
     if (viewName !== 'auth') window.requestedView = viewName;
     showView('auth');
     return;
@@ -1258,8 +1264,9 @@ function closeModal() {
 
 function closeAuth() {
   document.getElementById('view-auth').classList.add('hidden');
-  if (authManager.user) {
-    document.getElementById('nav').classList.remove('hidden');
+  document.getElementById('nav').classList.remove('hidden');
+  if (S.view === 'auth') {
+    S.view = 'home';
   }
 }
 
@@ -1955,7 +1962,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  document.getElementById('listen-back')?.addEventListener('click', () => showView('home'));
+  document.getElementById('listen-back')?.addEventListener('click', () => {
+    const playVisible = !document.getElementById('listen-play')?.classList.contains('hidden');
+    const resultVisible = !document.getElementById('listen-result')?.classList.contains('hidden');
+    if (playVisible || resultVisible) {
+      resetListenToSetup();
+    } else {
+      showView('home');
+    }
+  });
   document.getElementById('pronounce-level')?.addEventListener('change', e => loadPronounceLevel(+e.target.value));
   document.getElementById('pronounce-sample')?.addEventListener('click', playPronounceSample);
   document.getElementById('pronounce-start-record')?.addEventListener('click', startPronounceRecording);
@@ -2082,11 +2097,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('listen-start')?.addEventListener('click', startListenGame);
   document.getElementById('listen-play-audio')?.addEventListener('click', playListenAudio);
   document.getElementById('listen-end')?.addEventListener('click', endListenGame);
-  document.getElementById('listen-again')?.addEventListener('click', () => {
-    document.getElementById('listen-result').classList.add('hidden');
-    document.getElementById('listen-play').classList.add('hidden');
-    document.querySelector('#view-listen .quiz-setup').classList.remove('hidden');
-  });
+  document.getElementById('listen-setup')?.addEventListener('click', resetListenToSetup);
+  document.getElementById('listen-result-setup')?.addEventListener('click', resetListenToSetup);
+  document.getElementById('listen-again')?.addEventListener('click', resetListenToSetup);
 
   // typing
   document.getElementById('type-start')?.addEventListener('click', () => {
@@ -2181,15 +2194,11 @@ document.addEventListener('DOMContentLoaded', () => {
     pLevel.insertAdjacentHTML('afterbegin', '<option value="0">⭐ Câu của tôi</option>');
   }
 
-  if (!authManager.user) {
-    showView('auth');
+  if (window.location.pathname === '/admin1811') {
+    authManager.showAdminEntry();
   } else {
-    if (window.location.pathname === '/admin1811') {
-      authManager.showAdminEntry();
-    } else {
-      showView('home');
-      renderHome();
-    }
+    showView('home');
+    renderHome();
   }
 });
 
@@ -2617,6 +2626,16 @@ function playListenAudio() {
   if (S.listen.currentAudio) {
     playAudio(S.listen.currentAudio.simplified);
   }
+}
+
+function resetListenToSetup() {
+  if (S.listen.timer) {
+    clearInterval(S.listen.timer);
+    S.listen.timer = null;
+  }
+  document.getElementById('listen-result').classList.add('hidden');
+  document.getElementById('listen-play').classList.add('hidden');
+  document.querySelector('#view-listen .quiz-setup')?.classList.remove('hidden');
 }
 
 function selectListenOption(button, isCorrect) {

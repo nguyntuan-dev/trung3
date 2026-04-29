@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>汉语Go – Học Tiếng Trung</title>
   <meta name="description" content="Tra cứu từ vựng tiếng Trung từ từ điển CC-CEDICT, học theo chuẩn HSK 1-6.">
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=20260429b">
   <link rel="icon" href="/static/ChatGPT Image 22_18_16 20 thg 4, 2026.png" />
   <style>
     /* Container rộng rãi hơn trên màn hình lớn */
@@ -49,7 +49,6 @@
       <section class="hero-simple">
         <h1>Học tiếng Trung<br>cùng Go</h1>
         <p>Tra cứu hơn 120.000 từ, học theo lộ trình HSK 1–6, luyện flashcard và kiểm tra.</p>
-        <button class="btn-main" id="btn-go">Bắt đầu học →</button>
       </section>
 
       <section class="hsk-grid" id="hsk-grid">
@@ -336,6 +335,7 @@
 
         <div style="text-align:center; margin-top:30px;">
           <button class="btn-ghost" id="listen-end">⏹ Kết thúc</button>
+          <button class="btn-ghost" id="listen-setup" style="margin-left: 10px;">Quay lại setup</button>
         </div>
       </div>
 
@@ -344,6 +344,7 @@
         <div class="qr-score" id="listen-final-score">0/10</div>
         <p class="muted" id="listen-detail">Chi tiết kết quả sẽ hiển thị ở đây</p>
         <button class="btn-main" id="listen-again">Chơi lại</button>
+        <button class="btn-ghost" id="listen-result-setup" style="margin-left: 10px;">Quay lại setup</button>
       </div>
     </div>
 
@@ -716,8 +717,8 @@
     <p id="loading-text">Đang cập nhật dữ liệu...</p>
   </div>
 
-  <script src="/static/hanzi-writer.min.js"></script>
-  <script src="/static/script.js"></script>
+  <script src="/static/hanzi-writer.min.js?v=20260429b"></script>
+  <script src="/static/script.js?v=20260429b"></script>
 </body>
 
 </html>
