@@ -1011,6 +1011,12 @@ function showView(viewName) {
 
   S.view = viewName;
 
+  if (viewName === 'auth') {
+    document.getElementById('view-auth')?.classList.remove('hidden');
+    document.getElementById('nav')?.classList.add('hidden');
+    return;
+  }
+
   // Cancel tất cả request pending từ view trước – tránh pile-up khi Railway chậm
   _navController.abort();
   _navController = new AbortController();
@@ -1021,14 +1027,9 @@ function showView(viewName) {
   document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-auth')?.classList.add('hidden');
   
-  if (viewName === 'auth') {
-    document.getElementById('view-auth')?.classList.remove('hidden');
-    document.getElementById('nav')?.classList.add('hidden');
-  } else {
-    const targetView = document.getElementById(`view-${viewName}`);
-    if (targetView) targetView.classList.remove('hidden');
-    document.getElementById('nav')?.classList.remove('hidden');
-  }
+  const targetView = document.getElementById(`view-${viewName}`);
+  if (targetView) targetView.classList.remove('hidden');
+  document.getElementById('nav')?.classList.remove('hidden');
 
   // 3. Cập nhật trạng thái Active trên Menu
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === viewName));
@@ -1266,7 +1267,8 @@ function closeAuth() {
   document.getElementById('view-auth').classList.add('hidden');
   document.getElementById('nav').classList.remove('hidden');
   if (S.view === 'auth') {
-    S.view = 'home';
+    S.view = '';
+    showView('home');
   }
 }
 

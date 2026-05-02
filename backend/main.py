@@ -374,19 +374,35 @@ def search_words(
     is_hanzi = any('\u4e00' <= c <= '\u9fff' for c in q)
     search_target = q
 
-    # Nếu không có chữ Hán (có thể là tiếng Việt/Anh) và có dấu cách hoặc chuỗi dài
-    if not is_hanzi and (" " in q or len(q) > 8):
-        try:
-            from vietnamese import translate_to_chinese
-            translated = translate_to_chinese(q)
-            if translated and any('\u4e00' <= c <= '\u9fff' for c in translated):
-                search_target = translated
-                is_hanzi = True # Chuỗi sau khi dịch là Hán tự
-        except:
-            pass
-    
     # Thử tìm kiếm trực tiếp trước
     results = cedict.search(q, limit=limit, offset=offset)
+    seen_words = {r.get("simplified") for r in results}
+
+    def add_result(item: dict | None):
+        if not item:
+            return
+        key = item.get("simplified")
+        if not key or key in seen_words:
+            return
+        results.append(item)
+        seen_words.add(key)
+
+    def fallback_hanzi_result(text: str) -> dict | None:
+        text = text.strip()
+        if not text or not any('\u4e00' <= c <= '\u9fff' for c in text):
+            return None
+        meaning = VI.get(text) or translate_word(text)
+        if not meaning:
+            return None
+        return {
+            "traditional": text,
+            "simplified": text,
+            "pinyin": "",
+            "english": [],
+            "vietnamese": meaning,
+            "hsk": 0,
+            "source": "translation_fallback",
+        }
 
     # 2. Nếu là chuỗi Hán tự (trực tiếp hoặc sau khi dịch) -> Thực hiện tách câu (Segmentation)
     if is_hanzi and (len(search_target) > 2 or search_target != q):
@@ -409,14 +425,19 @@ def search_words(
             if not match_found:
                 i += 1 # Bỏ qua ký tự không hiểu
         
+        if not segmented:
+            fallback = fallback_hanzi_result(text_to_seg)
+            if fallback:
+                segmented.append(fallback)
+
         if segmented:
             # Gộp kết quả tìm kiếm ban đầu và kết quả tách câu, tránh trùng lặp
-            seen = {r['simplified'] for r in results}
             for item in segmented:
-                if item['simplified'] not in seen:
-                    results.append(item)
-                    seen.add(item['simplified'])
+                add_result(item)
             return {"query": q, "translated": search_target if search_target != q else None, "count": len(results), "results": results[:limit], "type": "segmentation"}
+
+    if is_hanzi and not results:
+        add_result(fallback_hanzi_result(search_target))
 
     # 3. Nếu kết quả ít, tìm kiếm bổ sung trong từ điển Tiếng Việt (VI)
     # Hỗ trợ tìm từ Hán bằng nghĩa tiếng Việt (ví dụ: gõ "yêu" ra từ "爱")
@@ -425,7 +446,7 @@ def search_words(
         vi_matches = []
         for hanzi, meaning in VI.items():
             if q_lower in meaning.lower() or q_lower == hanzi:
-                if any(r.get("simplified") == hanzi for r in results):
+                if hanzi in seen_words:
                     continue
                 entry = cedict.lookup(hanzi)
                 if entry:
@@ -433,12 +454,28 @@ def search_words(
                     vi_matches.append(entry)
                 else:
                     vi_matches.append({"simplified": hanzi, "pinyin": "", "english": [], "vietnamese": meaning})
-        results = results + vi_matches
+        for item in vi_matches:
+            add_result(item)
+
+    if not is_hanzi and len(results) < limit:
+        for item in cedict.search_translations(q, limit=limit - len(results)):
+            add_result(item)
+
+    if not is_hanzi and not results:
+        translated = translate_to_chinese(q)
+        if translated and any('\u4e00' <= c <= '\u9fff' for c in translated):
+            entry = cedict.lookup(translated)
+            if entry:
+                add_result(entry)
+            else:
+                add_result(fallback_hanzi_result(translated))
+            if results:
+                return {"query": q, "translated": translated, "count": len(results), "results": results[:limit]}
 
     # 4. Cập nhật/Bổ sung nghĩa tiếng Việt từ file viet_dict cho các kết quả CEDICT
     for r in results:
         simp = r.get("simplified")
-        if simp in VI and not r.get("vietnamese"):
+        if simp in VI:
             r["vietnamese"] = VI[simp]
 
     return {"query": q, "count": len(results), "results": results[:limit]}

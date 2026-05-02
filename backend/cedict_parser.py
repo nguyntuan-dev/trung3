@@ -209,11 +209,90 @@ class CedictDict:
         res = db.query(models.HSKWord.level).filter_by(word=word).first()
         return res[0] if res else 0
 
+    @staticmethod
+    def _normalize_pinyin_query(q: str) -> str:
+        tone_map = {
+            "ā": ("a", "1"), "á": ("a", "2"), "ǎ": ("a", "3"), "à": ("a", "4"),
+            "ē": ("e", "1"), "é": ("e", "2"), "ě": ("e", "3"), "è": ("e", "4"),
+            "ī": ("i", "1"), "í": ("i", "2"), "ǐ": ("i", "3"), "ì": ("i", "4"),
+            "ō": ("o", "1"), "ó": ("o", "2"), "ǒ": ("o", "3"), "ò": ("o", "4"),
+            "ū": ("u", "1"), "ú": ("u", "2"), "ǔ": ("u", "3"), "ù": ("u", "4"),
+            "ǖ": ("u:", "1"), "ǘ": ("u:", "2"), "ǚ": ("u:", "3"), "ǜ": ("u:", "4"),
+            "ü": ("u:", ""), "Ü": ("u:", ""),
+        }
+        syllables = []
+        for raw_syllable in re.split(r"\s+", q.strip()):
+            chars = []
+            tone = ""
+            for ch in raw_syllable:
+                mapped = tone_map.get(ch)
+                if mapped:
+                    chars.append(mapped[0])
+                    tone = mapped[1] or tone
+                else:
+                    chars.append(ch.lower())
+            syllables.append("".join(chars) + tone)
+        return " ".join(s for s in syllables if s)
+
+    def _row_to_dict(self, db: Session, row: models.DictionaryEntry) -> dict:
+        hsk = self._get_hsk_level(db, row.simplified)
+        return CedictEntry(
+            row.traditional,
+            row.simplified,
+            row.pinyin,
+            json.loads(row.english),
+        ).to_dict(hsk)
+
+    def search_translations(self, q: str, limit: int = 40, offset: int = 0) -> list[dict]:
+        """Search Vietnamese cache and hydrate matching Chinese entries when possible."""
+        q_lower = q.lower().strip()
+        if not q_lower:
+            return []
+
+        db = self._get_db()
+        try:
+            rows = (
+                db.query(models.TranslationCache)
+                .filter(func.lower(models.TranslationCache.vietnamese).contains(q_lower))
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+            results = []
+            for row in rows:
+                entry_row = (
+                    db.query(models.DictionaryEntry)
+                    .filter(
+                        or_(
+                            models.DictionaryEntry.simplified == row.word,
+                            models.DictionaryEntry.traditional == row.word,
+                        )
+                    )
+                    .first()
+                )
+                if entry_row:
+                    item = self._row_to_dict(db, entry_row)
+                else:
+                    item = {
+                        "traditional": row.word,
+                        "simplified": row.word,
+                        "pinyin": "",
+                        "english": [],
+                        "vietnamese": row.vietnamese,
+                        "hsk": self._get_hsk_level(db, row.word),
+                    }
+                item["vietnamese"] = row.vietnamese
+                results.append(item)
+            return results
+        finally:
+            db.close()
+
     def search(self, q: str, limit: int = 40, offset: int = 0) -> list[dict]:
         """Search by Chinese characters, pinyin or English via SQL."""
         q_lower = q.lower().strip()
         if not q_lower:
             return []
+        pinyin_query = self._normalize_pinyin_query(q)
 
         db = self._get_db()
         try:
@@ -227,6 +306,7 @@ class CedictDict:
                     models.DictionaryEntry.simplified.contains(q_lower),
                     models.DictionaryEntry.traditional.contains(q_lower),
                     models.DictionaryEntry.pinyin.contains(q_lower),
+                    models.DictionaryEntry.pinyin.contains(pinyin_query),
                     models.DictionaryEntry.english.contains(q_lower)
                 )
             )
@@ -235,9 +315,7 @@ class CedictDict:
             
             results = []
             for row in rows:
-                hsk = self._get_hsk_level(db, row.simplified)
-                entry = CedictEntry(row.traditional, row.simplified, row.pinyin, json.loads(row.english))
-                results.append(entry.to_dict(hsk))
+                results.append(self._row_to_dict(db, row))
             
             return results
         finally:
@@ -287,6 +365,10 @@ class CedictDict:
 
     def lookup(self, word: str) -> dict | None:
         """Exact lookup by simplified or traditional."""
+        word = word.strip()
+        if not word:
+            return None
+
         db = self._get_db()
         try:
             row = db.query(models.DictionaryEntry).filter(
@@ -294,8 +376,7 @@ class CedictDict:
             ).first()
             
             if row:
-                hsk = self._get_hsk_level(db, row.simplified)
-                return CedictEntry(row.traditional, row.simplified, row.pinyin, json.loads(row.english)).to_dict(hsk)
+                return self._row_to_dict(db, row)
             return None
         finally:
             db.close()
