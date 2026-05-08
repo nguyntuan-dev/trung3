@@ -11,9 +11,14 @@
   <style>
     /* Container rộng rãi hơn trên màn hình lớn */
     @media (min-width: 901px) {
-      .container { max-width: 1200px !important; width: 95% !important; }
+      .container {
+        max-width: 1200px !important;
+        width: 95% !important;
+      }
     }
   </style>
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2809354284955966"
+    crossorigin="anonymous"></script>
 </head>
 
 <body>
@@ -242,7 +247,8 @@
       </div>
 
       <div id="match-play" class="hidden">
-        <div class="match-stats" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding:15px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">
+        <div class="match-stats"
+          style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding:15px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">
           <div>
             <div style="font-size:0.9rem; color:#64748b;">Điểm</div>
             <div id="match-score" style="font-size:2rem; font-weight:800; color:var(--primary);">0</div>
@@ -267,7 +273,8 @@
             <!-- draggable items will be added here -->
           </div>
           <div class="match-column" id="match-right">
-            <h3 style="text-align:center; margin-bottom:15px; color:#374151;">🎯 <span id="match-target-label">Nghĩa</span></h3>
+            <h3 style="text-align:center; margin-bottom:15px; color:#374151;">🎯 <span
+                id="match-target-label">Nghĩa</span></h3>
             <!-- drop zones will be added here -->
           </div>
         </div>
@@ -324,12 +331,14 @@
 
       <div id="listen-play" class="hidden">
         <div class="listen-question" style="text-align:center; margin-bottom:30px;">
-          <button id="listen-play-audio" class="btn-main" style="font-size:1.5rem; padding:20px 40px; margin-bottom:20px;">🔊 Phát âm</button>
+          <button id="listen-play-audio" class="btn-main"
+            style="font-size:1.5rem; padding:20px 40px; margin-bottom:20px;">🔊 Phát âm</button>
           <div id="listen-timer" style="font-size:2rem; font-weight:800; color:#ef4444; margin:10px 0;">10</div>
           <p class="muted">Chọn đáp án đúng:</p>
         </div>
 
-        <div class="listen-options" id="listen-options" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:15px; max-width:600px; margin:0 auto;">
+        <div class="listen-options" id="listen-options"
+          style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:15px; max-width:600px; margin:0 auto;">
           <!-- options will be added here -->
         </div>
 
@@ -499,7 +508,8 @@
       </div>
       <div class="quiz-setup" style="margin-bottom:18px;">
         <div class="muted" style="max-width:100%; line-height:1.6;">
-          Chọn một câu dài để luyện phát âm. Bấm <strong>Phát mẫu</strong> để nghe trước, sau đó bấm <strong>Bắt đầu ghi âm</strong> để đọc to câu tiếng Trung.
+          Chọn một câu dài để luyện phát âm. Bấm <strong>Phát mẫu</strong> để nghe trước, sau đó bấm <strong>Bắt đầu ghi
+            âm</strong> để đọc to câu tiếng Trung.
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
           <button id="pronounce-sample" class="btn-ghost-sm">🔊 Phát mẫu</button>
@@ -509,18 +519,24 @@
         </div>
       </div>
       <div id="pronounce-list" class="word-list"></div>
-      <div id="pronounce-panel" class="hidden" style="margin-top:18px; padding:18px; border-radius:18px; background:linear-gradient(180deg,#ffffff,#f8fbff); border:1px solid #e5eef7; box-shadow:0 14px 30px rgba(15,23,42,.08); position:relative; z-index:1;">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:14px;">
+      <div id="pronounce-panel" class="hidden"
+        style="margin-top:18px; padding:18px; border-radius:18px; background:linear-gradient(180deg,#ffffff,#f8fbff); border:1px solid #e5eef7; box-shadow:0 14px 30px rgba(15,23,42,.08); position:relative; z-index:1;">
+        <div
+          style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:14px;">
           <div>
-            <div id="pronounce-status" style="font-weight:600; color:#0f172a; margin-bottom:4px;">Sẵn sàng chấm điểm.</div>
+            <div id="pronounce-status" style="font-weight:600; color:#0f172a; margin-bottom:4px;">Sẵn sàng chấm điểm.
+            </div>
             <div class="muted">Chấm tổng, kiểm tra từng từ và phát hiện tone sai.</div>
           </div>
           <div style="text-align:right;">
             <div class="muted" style="font-size:.9rem;">Điểm tổng</div>
-            <div id="pronounce-score" style="font-size:3rem; font-weight:800; color:var(--primary); line-height:1;">0</div>
+            <div id="pronounce-score" style="font-size:3rem; font-weight:800; color:var(--primary); line-height:1;">0
+            </div>
           </div>
         </div>
-        <div id="pronounce-detail" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:16px;"></div>
+        <div id="pronounce-detail"
+          style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:16px;">
+        </div>
         <div id="pronounce-word-list" style="display:grid; gap:10px;"></div>
       </div>
     </div>
@@ -556,23 +572,26 @@
         <p class="muted center">Đang tải...</p>
       </div>
 
-      <div id="review-card" class="hidden" style="text-align:center; padding:40px 20px; background:var(--bg-card); border-radius:12px; margin:20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+      <div id="review-card" class="hidden"
+        style="text-align:center; padding:40px 20px; background:var(--bg-card); border-radius:12px; margin:20px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
           <span class="pill" id="review-counter">1 / 0</span>
           <div>
-            <span class="pill" style="background:var(--green); color:#fff; margin-right:10px;">✓ <span id="review-correct">0</span></span>
+            <span class="pill" style="background:var(--green); color:#fff; margin-right:10px;">✓ <span
+                id="review-correct">0</span></span>
             <span class="pill" style="background:var(--red); color:#fff;">✗ <span id="review-wrong">0</span></span>
           </div>
         </div>
 
-        <div id="review-word-char" style="font-size:4rem; font-weight:bold; color:var(--zh-color); margin:20px 0;">–</div>
+        <div id="review-word-char" style="font-size:4rem; font-weight:bold; color:var(--zh-color); margin:20px 0;">–
+        </div>
         <div id="review-word-pinyin" style="font-size:1.2rem; color:#666; margin:10px 0;">–</div>
         <div id="review-word-vi" style="font-size:1.1rem; color:var(--primary); margin:10px 0;">–</div>
 
         <div style="margin-top:30px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
           <!-- Nút hiện đáp án -->
           <button class="btn-main" id="review-show-answer">Xem đáp án</button>
-          
+
           <!-- Cụm nút đánh giá (ẩn lúc đầu) -->
           <div id="review-actions" class="hidden" style="display:flex; gap:12px;">
             <button class="btn-s btn-red" id="review-btn-wrong">✗ Sai</button>
@@ -586,10 +605,11 @@
         </div>
       </div>
 
-      <div id="review-stats" class="hidden" style="padding:20px; background:var(--bg-card); border-radius:12px; margin:20px; text-align:center;">
+      <div id="review-stats" class="hidden"
+        style="padding:20px; background:var(--bg-card); border-radius:12px; margin:20px; text-align:center;">
         <h3>Tổng kết</h3>
         <div style="font-size:1.5rem; margin:10px 0;">
-          Đúng: <span id="review-final-correct" style="color:var(--green); font-weight:bold;">0</span> / 
+          Đúng: <span id="review-final-correct" style="color:var(--green); font-weight:bold;">0</span> /
           Sai: <span id="review-final-wrong" style="color:var(--red); font-weight:bold;">0</span>
         </div>
         <div style="font-size:1.2rem; margin:10px 0;">
@@ -606,13 +626,16 @@
         <div class="auth-panel">
           <div class="auth-card">
             <h3 id="auth-title">Đăng nhập</h3>
-            
+
             <!-- Mode Tabs -->
-            <div class="auth-tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
+            <div class="auth-tabs"
+              style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb;">
               <button class="auth-tab active" data-mode="login"
-                style="padding: 8px 16px; border: none; background: none; cursor: pointer; border-bottom: 3px solid var(--primary); color: var(--primary);">Đăng nhập</button>
+                style="padding: 8px 16px; border: none; background: none; cursor: pointer; border-bottom: 3px solid var(--primary); color: var(--primary);">Đăng
+                nhập</button>
               <button class="auth-tab" data-mode="register"
-                style="padding: 8px 16px; border: none; background: none; cursor: pointer; color: #999;">Đăng ký</button>
+                style="padding: 8px 16px; border: none; background: none; cursor: pointer; color: #999;">Đăng
+                ký</button>
             </div>
 
             <!-- Login Form -->
@@ -625,7 +648,8 @@
                 <div style="position: relative; display: flex; align-items: center;">
                   <input type="password" id="auth-password" class="auth-input" autocomplete="current-password"
                     placeholder="Nhập mật khẩu" required style="padding-right: 40px; width: 100%;">
-                  <span id="toggle-password" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
+                  <span id="toggle-password"
+                    style="position: absolute; right: 12px; cursor: pointer; user-select: none;"
                     title="Hiện/Ẩn mật khẩu">👁️</span>
                 </div>
               </label>
@@ -644,7 +668,8 @@
                 <div style="position: relative; display: flex; align-items: center;">
                   <input type="password" id="auth-reg-password" class="auth-input" autocomplete="new-password"
                     placeholder="Nhập mật khẩu" required minlength="6" style="padding-right: 40px; width: 100%;">
-                  <span id="toggle-password-reg" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
+                  <span id="toggle-password-reg"
+                    style="position: absolute; right: 12px; cursor: pointer; user-select: none;"
                     title="Hiện/Ẩn mật khẩu">👁️</span>
                 </div>
               </label>
@@ -652,7 +677,8 @@
                 <div style="position: relative; display: flex; align-items: center;">
                   <input type="password" id="auth-reg-password-confirm" class="auth-input" autocomplete="new-password"
                     placeholder="Nhập lại mật khẩu" required minlength="6" style="padding-right: 40px; width: 100%;">
-                  <span id="toggle-password-confirm" style="position: absolute; right: 12px; cursor: pointer; user-select: none;" 
+                  <span id="toggle-password-confirm"
+                    style="position: absolute; right: 12px; cursor: pointer; user-select: none;"
                     title="Hiện/Ẩn mật khẩu">👁️</span>
                 </div>
               </label>
@@ -673,7 +699,8 @@
       <div class="admin-grid">
         <section>
           <h3>Tài khoản người dùng</h3>
-          <p class="admin-note">Vì lý do bảo mật, mật khẩu không được hiển thị. Admin chỉ xem được tên tài khoản, trạng thái và nhật ký truy cập.</p>
+          <p class="admin-note">Vì lý do bảo mật, mật khẩu không được hiển thị. Admin chỉ xem được tên tài khoản, trạng
+            thái và nhật ký truy cập.</p>
           <div class="admin-list" id="admin-users"></div>
         </section>
         <section>
